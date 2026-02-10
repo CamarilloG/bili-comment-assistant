@@ -9,7 +9,11 @@ class BilibiliSelectors:
     # Search
     SEARCH = {
         "video_card": ".video-list .bili-video-card, .bili-video-card, .video-item, .video-list-item, .bili-video-card__wrap",
-        "link": "a[href*='video/BV']"
+        "link": "a[href*='video/BV']",
+        "title": ".bili-video-card__info--tit, h3.t, .title",
+        "author": ".bili-video-card__info--author, .up-name, .author",
+        "date": ".bili-video-card__info--date, .time",
+        "stats": ".bili-video-card__stats--item, .so-icon-watch-num, .so-icon-time"
     }
 
     @staticmethod

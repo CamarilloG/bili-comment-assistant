@@ -3,7 +3,9 @@ account:
 search:
   keywords:
   - 终末地
-  max_videos_per_keyword: 2
+  - 明日方舟
+  - 鹰角网络
+  max_videos_per_keyword: 3
   filter:
     sort: totalrank
     duration: 0
@@ -11,12 +13,16 @@ search:
     selection: order
     random_pool_size: 20
 comment:
+  enable_image: false
   texts:
-  - 感谢分享，很有帮助！
+  - 终末地牛福！
   images:
   - F:/图片/Saved Pictures/afde1a50f8198618426f57970ced2e738ad4e6c4.jpg
 behavior:
-  min_delay: 1.0
-  max_delay: 5.0
+  min_delay: 5.0
+  max_delay: 8.0
   headless: false
   timeout: 30000
+browser:
+  path: C:/Program Files/Google/Chrome/Application/chrome.exe
+  port: 9393
