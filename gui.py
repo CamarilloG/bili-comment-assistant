@@ -1,6 +1,7 @@
 import sys
 import threading
 import yaml
+import json
 import os
 import tkinter as tk
 from tkinter import filedialog, messagebox, scrolledtext
@@ -29,7 +30,7 @@ class BiliBotGUI:
     def __init__(self, root):
         self.root = root
         self.root.title("Bilibili 自动评论助手")
-        self.root.geometry("600x750")
+        self.root.geometry("600x900")
         self.config_file = "config.yaml"
         self.running = False
         
@@ -47,22 +48,22 @@ class BiliBotGUI:
         main_frame.pack(fill=BOTH, expand=YES)
         
         # --- Section 1: Basic Config ---
-        basic_group = ttk.Labelframe(main_frame, text="基础配置", padding=10)
-        basic_group.pack(fill=X, pady=5)
+        basic_group = ttk.Labelframe(main_frame, text="基础配置", padding=5)
+        basic_group.pack(fill=X, pady=2)
         
         # Keywords
         ttk.Label(basic_group, text="搜索关键词 (逗号分隔):").pack(anchor=W)
         self.keywords_entry = ttk.Entry(basic_group)
-        self.keywords_entry.pack(fill=X, pady=5)
+        self.keywords_entry.pack(fill=X, pady=2)
         
         # Comment Text
         ttk.Label(basic_group, text="评论内容 (固定单条):").pack(anchor=W)
         self.comment_text = ttk.Text(basic_group, height=3)
-        self.comment_text.pack(fill=X, pady=5)
+        self.comment_text.pack(fill=X, pady=2)
         
         # Image Upload
         img_frame = ttk.Frame(basic_group)
-        img_frame.pack(fill=X, pady=5)
+        img_frame.pack(fill=X, pady=2)
         ttk.Label(img_frame, text="图片路径:").pack(side=LEFT)
         self.img_path_var = tk.StringVar()
         self.img_entry = ttk.Entry(img_frame, textvariable=self.img_path_var)
@@ -70,8 +71,8 @@ class BiliBotGUI:
         ttk.Button(img_frame, text="选择图片", command=self.select_image, bootstyle="info-outline").pack(side=RIGHT)
 
         # --- Section 2: Parameters ---
-        param_group = ttk.Labelframe(main_frame, text="运行参数", padding=10)
-        param_group.pack(fill=X, pady=5)
+        param_group = ttk.Labelframe(main_frame, text="运行参数", padding=5)
+        param_group.pack(fill=X, pady=2)
         
         # Row 1: Delay and Timeout
         r1 = ttk.Frame(param_group)
@@ -89,7 +90,7 @@ class BiliBotGUI:
 
         # Row 2: Max Videos and Headless
         r2 = ttk.Frame(param_group)
-        r2.pack(fill=X, pady=5)
+        r2.pack(fill=X, pady=2)
         ttk.Label(r2, text="最大评论数:").pack(side=LEFT)
         self.max_videos = ttk.Entry(r2, width=8)
         self.max_videos.pack(side=LEFT, padx=5)
@@ -98,8 +99,8 @@ class BiliBotGUI:
         ttk.Checkbutton(r2, text="显示浏览器窗口 (真实模式)", variable=self.headless_var, onvalue=False, offvalue=True).pack(side=LEFT, padx=20)
 
         # --- Section 2.5: Search Filters & Strategy ---
-        filter_group = ttk.Labelframe(main_frame, text="搜索筛选与策略", padding=10)
-        filter_group.pack(fill=X, pady=5)
+        filter_group = ttk.Labelframe(main_frame, text="搜索筛选与策略", padding=5)
+        filter_group.pack(fill=X, pady=2)
         
         # Row 1: Sort and Duration
         fr1 = ttk.Frame(filter_group)
@@ -128,7 +129,7 @@ class BiliBotGUI:
         
         # Row 2: Strategy
         fr2 = ttk.Frame(filter_group)
-        fr2.pack(fill=X, pady=5)
+        fr2.pack(fill=X, pady=2)
         
         ttk.Label(fr2, text="选择策略:").pack(side=LEFT)
         self.strategy_var = tk.StringVar(value="order")
@@ -140,8 +141,8 @@ class BiliBotGUI:
         self.strat_cb.current(0)
 
         # --- Section 3: Account ---
-        auth_group = ttk.Labelframe(main_frame, text="账号状态", padding=10)
-        auth_group.pack(fill=X, pady=5)
+        auth_group = ttk.Labelframe(main_frame, text="账号状态", padding=5)
+        auth_group.pack(fill=X, pady=2)
         
         self.status_label = ttk.Label(auth_group, text="未检测", bootstyle="secondary")
         self.status_label.pack(side=LEFT, padx=10)
@@ -151,11 +152,19 @@ class BiliBotGUI:
 
         # --- Section 4: Control & Logs ---
         ctrl_frame = ttk.Frame(main_frame)
-        ctrl_frame.pack(fill=X, pady=10)
+        ctrl_frame.pack(fill=X, pady=5)
         
-        ttk.Button(ctrl_frame, text="保存配置并开始任务", command=self.start_task, bootstyle="success").pack(fill=X, pady=2)
+        self.start_btn = ttk.Button(ctrl_frame, text="保存配置并开始任务", command=self.start_task, bootstyle="success")
+        self.start_btn.pack(fill=X, pady=2)
         
-        self.log_area = scrolledtext.ScrolledText(main_frame, height=12, state='normal')
+        self.stop_btn = ttk.Button(ctrl_frame, text="停止任务", command=self.stop_task, bootstyle="danger", state="disabled")
+        self.stop_btn.pack(fill=X, pady=2)
+        
+        self.progress_var = tk.StringVar(value="就绪")
+        self.progress_label = ttk.Label(ctrl_frame, textvariable=self.progress_var, bootstyle="info")
+        self.progress_label.pack(fill=X, pady=5)
+        
+        self.log_area = scrolledtext.ScrolledText(main_frame, height=20, state='normal')
         self.log_area.pack(fill=BOTH, expand=YES, pady=5)
 
     def load_config(self):
@@ -210,13 +219,49 @@ class BiliBotGUI:
 
     def save_config(self):
         try:
-            # Build config dict
             keywords = [k.strip() for k in self.keywords_entry.get().split(",") if k.strip()]
+            if not keywords:
+                messagebox.showerror("错误", "请至少输入一个搜索关键词！")
+                return False
+            
             comment = self.comment_text.get("1.0", tk.END).strip()
+            if not comment:
+                messagebox.showerror("错误", "请输入评论内容！")
+                return False
+            
+            try:
+                min_delay_val = float(self.min_delay.get())
+                max_delay_val = float(self.max_delay.get())
+                if min_delay_val < 0 or max_delay_val < min_delay_val:
+                    messagebox.showerror("错误", "延迟时间设置不合法！")
+                    return False
+            except ValueError:
+                messagebox.showerror("错误", "延迟时间必须是数字！")
+                return False
+            
+            try:
+                max_videos_val = int(self.max_videos.get())
+                if max_videos_val < 1:
+                    messagebox.showerror("错误", "最大评论数必须大于0！")
+                    return False
+            except ValueError:
+                messagebox.showerror("错误", "最大评论数必须是整数！")
+                return False
+            
+            try:
+                timeout_val = int(self.timeout_entry.get())
+                if timeout_val < 1000:
+                    messagebox.showerror("错误", "超时时间不能小于1000ms！")
+                    return False
+            except ValueError:
+                messagebox.showerror("错误", "超时时间必须是整数！")
+                return False
+            
             img_path = self.img_path_var.get().strip()
             
-            # Use forward slashes for paths to avoid YAML escape issues
             if img_path:
+                if not os.path.exists(img_path):
+                    messagebox.showwarning("警告", f"图片文件不存在: {img_path}")
                 img_path = img_path.replace("\\", "/")
             
             # Get values from combobox maps
@@ -271,20 +316,33 @@ class BiliBotGUI:
             return
             
         self.running = True
+        self.start_btn.config(state="disabled")
+        self.stop_btn.config(state="normal")
+        self.progress_var.set("任务运行中...")
         logger.info("任务已启动...")
         
-        # Run in thread
         t = threading.Thread(target=self._run_backend)
         t.daemon = True
         t.start()
+    
+    def stop_task(self):
+        if self.running:
+            logger.info("正在停止任务...")
+            self.progress_var.set("正在停止...")
+            backend_main.stop_task()
+            self.stop_btn.config(state="disabled")
 
     def _run_backend(self):
         try:
             backend_main.main()
+            self.progress_var.set("任务完成")
         except Exception as e:
             logger.error(f"任务异常: {e}")
+            self.progress_var.set("任务异常")
         finally:
             self.running = False
+            self.start_btn.config(state="normal")
+            self.stop_btn.config(state="disabled")
             logger.info("任务结束。")
 
     def check_login_status(self):
@@ -298,10 +356,9 @@ class BiliBotGUI:
                     # We need to manually load cookies here since AuthManager.login usually does it
                     # But login() also triggers QR if failed. We just want check.
                     
-                    # Temporarily use internal method or just try login logic but return
                     if os.path.exists("cookies.json"):
-                        with open("cookies.json", 'r') as f:
-                            context.add_cookies(yaml.safe_load(f)) # json is valid yaml
+                        with open("cookies.json", 'r', encoding='utf-8') as f:
+                            context.add_cookies(json.load(f)) # json is valid yaml
                     
                     is_logged_in = auth._check_login_status()
                     browser.close()

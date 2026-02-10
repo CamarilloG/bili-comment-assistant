@@ -11,7 +11,8 @@ class HistoryManager:
             try:
                 with open(self.file_path, 'r', encoding='utf-8') as f:
                     return set(json.load(f))
-            except:
+            except (json.JSONDecodeError, IOError, ValueError) as e:
+                print(f"Warning: Failed to load history file: {e}")
                 return set()
         return set()
 
