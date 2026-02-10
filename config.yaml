@@ -1,0 +1,22 @@
+account:
+  cookie_file: cookies.json
+search:
+  keywords:
+  - 测试
+  max_videos_per_keyword: 5
+  filter:
+    sort: "pubdate" # pubdate, click, totalrank, dm, stow
+    duration: 0 # 0=all, 1=<10m, 2=10-30m, 3=30-60m, 4=>60m
+  strategy:
+    selection: "order" # order, random
+    random_pool_size: 20
+comment:
+  texts:
+  - 感谢分享，很有帮助！
+  images:
+  - F:/图片/VR/QQ截图20230226230534.png
+behavior:
+  min_delay: 1.0
+  max_delay: 5.0
+  headless: false
+  timeout: 30000
