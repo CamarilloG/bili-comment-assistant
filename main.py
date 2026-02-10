@@ -1,26 +1,32 @@
-import yaml
 import time
 import random
-import os
+import threading
 from playwright.sync_api import sync_playwright
 from core.auth import AuthManager
 from core.search import SearchManager
 from core.comment import CommentManager
 from core.history import HistoryManager
+from core.config import ConfigValidator
 from utils.logger import get_logger
 
 logger = get_logger()
 
-def load_config(path="config.yaml"):
-    if not os.path.exists(path):
-        logger.error(f"Config file {path} not found!")
-        return None
-    with open(path, "r", encoding="utf-8") as f:
-        return yaml.safe_load(f)
+_stop_event = threading.Event()
+
+def stop_task():
+    _stop_event.set()
+    logger.info("Stop signal received.")
+
+def reset_stop_flag():
+    _stop_event.clear()
 
 def main():
-    config = load_config()
-    if not config:
+    reset_stop_flag()
+    
+    try:
+        config = ConfigValidator.load_config()
+    except (FileNotFoundError, ValueError) as e:
+        logger.error(f"Configuration error: {e}")
         return
 
     headless = config["behavior"].get("headless", False)
@@ -29,17 +35,25 @@ def main():
     
     logger.info("Starting Bilibili Bot...")
     
+    # Browser launch options
+    launch_args = {
+        "headless": headless,
+        "args": [
+            "--no-sandbox",
+            "--disable-infobars",
+            "--window-size=1280,720", # Set window size
+            "--disable-blink-features=AutomationControlled"
+        ]
+    }
+    
     with sync_playwright() as p:
         # Launch browser
-        # args=['--disable-blink-features=AutomationControlled'] helps avoid detection
-        browser = p.chromium.launch(
-            headless=headless, 
-            args=['--disable-blink-features=AutomationControlled'] 
-        )
+        browser = p.chromium.launch(**launch_args)
         
+        # Create context with viewport size
         context = browser.new_context(
             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            viewport={'width': 1920, 'height': 1080}
+            viewport={'width': 1280, 'height': 720}
         )
         
         # Add stealth scripts if needed (basic stealth by modifying navigator.webdriver)
@@ -53,15 +67,20 @@ def main():
             logger.error("Login failed. Exiting.")
             return
 
-        # Use the same context for operations
-        page = context.new_page()
-        search_mgr = SearchManager(page)
-        comment_mgr = CommentManager(page)
+        search_page = context.new_page()
+        comment_page = context.new_page()
+        
+        search_mgr = SearchManager(search_page)
+        comment_mgr = CommentManager(comment_page)
         history_mgr = HistoryManager()
         
         # Iterate Keywords
         keywords = config["search"]["keywords"]
         for keyword in keywords:
+            if _stop_event.is_set():
+                logger.info("Task stopped by user.")
+                break
+                
             logger.info(f"Processing keyword: {keyword}")
             
             # Determine selection strategy
@@ -102,6 +121,10 @@ def main():
                 selected_videos = videos[:target_count]
             
             for video_url in selected_videos:
+                if _stop_event.is_set():
+                    logger.info("Task stopped by user.")
+                    break
+                    
                 bvid = history_mgr.extract_bvid(video_url)
                 
                 if history_mgr.has(bvid):

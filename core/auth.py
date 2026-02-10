@@ -3,6 +3,7 @@ import os
 import time
 from playwright.sync_api import BrowserContext, Page
 from utils.logger import get_logger
+from core.selectors import BilibiliSelectors
 
 logger = get_logger()
 
@@ -44,25 +45,18 @@ class AuthManager:
             logger.debug("Checking login status...")
             page.goto("https://www.bilibili.com/", wait_until="domcontentloaded")
             
-            # Wait a bit for dynamic load
+            # Wait for header to load
             try:
-                # Check for avatar element (indicating logged in)
-                # Selectors: .header-avatar-wrap (old), .bili-avatar (new), .header-entry-avatar (new header)
-                # Check for login button (indicating not logged in)
-                # .header-login-entry
-                
-                # Wait for either avatar or login button to appear
-                page.wait_for_selector(".header-avatar-wrap, .bili-avatar, .header-login-entry", timeout=10000)
-            except:
+                # Use a more generic selector for header
+                page.wait_for_selector(".bili-header, .header-entry-avatar", timeout=10000)
+            except Exception:
                 logger.warning("Timeout waiting for header elements.")
             
-            # Check if avatar exists
-            if page.locator(".header-avatar-wrap, .bili-avatar").count() > 0:
+            if page.locator(BilibiliSelectors.get_login_avatar()).count() > 0:
                 logger.debug("Avatar found. User is logged in.")
                 return True
                 
-            # Check if login button exists
-            if page.locator(".header-login-entry").count() > 0:
+            if page.locator(BilibiliSelectors.get_login_button()).count() > 0:
                 logger.debug("Login entry found. User is NOT logged in.")
                 return False
                 
