@@ -2,27 +2,31 @@ account:
   cookie_file: cookies.json
 search:
   keywords:
-  - 终末地
-  - 明日方舟
-  - 鹰角网络
-  max_videos_per_keyword: 3
+  - AI开发
+  max_videos_per_keyword: 2
   filter:
-    sort: totalrank
-    duration: 0
+    sort: click
+    duration: 1
+    time_range:
+      type: range
+      value:
+        start: '2026-03-13'
+        end: '2026-01-05'
   strategy:
     selection: order
+    strict_title_match: false
     random_pool_size: 20
 comment:
   enable_image: false
   texts:
-  - 终末地牛福！
+  - UP视频做的好棒！支持！
   images:
   - F:/图片/Saved Pictures/afde1a50f8198618426f57970ced2e738ad4e6c4.jpg
 behavior:
-  min_delay: 5.0
-  max_delay: 8.0
-  headless: false
+  min_delay: 3.0
+  max_delay: 5.0
+  headless: true
   timeout: 30000
 browser:
   path: C:/Program Files/Google/Chrome/Application/chrome.exe
-  port: 9393
+  port: 0

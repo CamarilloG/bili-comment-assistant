@@ -20,19 +20,19 @@ class AuthManager:
         3. If not, perform QR login.
         """
         if os.path.exists(self.cookie_file):
-            logger.info(f"Loading cookies from {self.cookie_file}")
+            logger.info(f"正在从 {self.cookie_file} 加载 Cookies")
             try:
                 with open(self.cookie_file, 'r', encoding='utf-8') as f:
                     cookies = json.load(f)
                     self.context.add_cookies(cookies)
                 
                 if self._check_login_status():
-                    logger.info("Login successful using cookies.")
+                    logger.info("使用 Cookies 登录成功。")
                     return True
                 else:
-                    logger.warning("Cookies expired or invalid.")
+                    logger.warning("Cookies 已过期或无效。")
             except Exception as e:
-                logger.error(f"Error loading cookies: {e}")
+                logger.error(f"加载 Cookies 出错: {e}")
         
         return self._qr_login()
 
@@ -42,7 +42,7 @@ class AuthManager:
         """
         page = self.context.new_page()
         try:
-            logger.debug("Checking login status...")
+            logger.debug("正在检查登录状态...")
             page.goto("https://www.bilibili.com/", wait_until="domcontentloaded")
             
             # Wait for header to load
@@ -50,20 +50,20 @@ class AuthManager:
                 # Use a more generic selector for header
                 page.wait_for_selector(".bili-header, .header-entry-avatar", timeout=10000)
             except Exception:
-                logger.warning("Timeout waiting for header elements.")
+                logger.warning("等待头部元素超时。")
             
             if page.locator(BilibiliSelectors.get_login_avatar()).count() > 0:
-                logger.debug("Avatar found. User is logged in.")
+                logger.debug("找到头像。用户已登录。")
                 return True
                 
             if page.locator(BilibiliSelectors.get_login_button()).count() > 0:
-                logger.debug("Login entry found. User is NOT logged in.")
+                logger.debug("找到登录入口。用户未登录。")
                 return False
                 
             # Fallback
             return False
         except Exception as e:
-            logger.error(f"Error checking login status: {e}")
+            logger.error(f"检查登录状态出错: {e}")
             return False
         finally:
             page.close()
@@ -72,11 +72,11 @@ class AuthManager:
         """
         Perform QR code login.
         """
-        logger.info("Starting QR code login...")
+        logger.info("开始扫码登录...")
         page = self.context.new_page()
         try:
             page.goto("https://passport.bilibili.com/login", wait_until="domcontentloaded")
-            logger.info("Please scan the QR code to login in the opened browser window.")
+            logger.info("请在打开的浏览器窗口中扫描二维码登录。")
             
             # Loop to check login status
             start_time = time.time()
@@ -90,23 +90,23 @@ class AuthManager:
                 # Bilibili login usually sets SESSDATA
                 sessdata = next((c for c in cookies if c['name'] == 'SESSDATA'), None)
                 if sessdata:
-                    logger.info("SESSDATA cookie found. Login likely successful.")
+                    logger.info("找到 SESSDATA Cookie。登录可能已成功。")
                     break
                     
                 # Check if URL changed significantly
                 if "passport.bilibili.com/login" not in page.url:
-                    logger.info("URL changed, assuming login successful.")
+                    logger.info("URL 已更改，假设登录成功。")
                     break
                 
                 time.sleep(2)
             
             # After loop, verify strictly
             if self._check_login_status():
-                logger.info("QR Login successful.")
+                logger.info("扫码登录成功。")
                 self._save_cookies()
                 return True
             else:
-                logger.error("Login failed or timed out.")
+                logger.error("登录失败或超时。")
                 return False
         finally:
             page.close()
@@ -115,4 +115,4 @@ class AuthManager:
         cookies = self.context.cookies()
         with open(self.cookie_file, 'w', encoding='utf-8') as f:
             json.dump(cookies, f, indent=2)
-        logger.info(f"Cookies saved to {self.cookie_file}")
+        logger.info(f"Cookies 已保存至 {self.cookie_file}")

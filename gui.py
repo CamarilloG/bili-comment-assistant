@@ -14,6 +14,8 @@ from playwright.sync_api import sync_playwright
 from core.auth import AuthManager
 import main as backend_main
 
+from ttkbootstrap.dialogs import Querybox
+
 # Redirect logs to GUI
 class TextHandler:
     def __init__(self, text_widget):
@@ -44,6 +46,7 @@ class BiliBotGUI:
         self.sort_var = tk.StringVar(value="totalrank")
         self.duration_var = tk.IntVar(value=0)
         self.strategy_var = tk.StringVar(value="order")
+        self.strict_match_var = tk.BooleanVar(value=False)
         self.progress_var = tk.StringVar(value="就绪")
         
         # UI Setup
@@ -115,7 +118,7 @@ class BiliBotGUI:
         ttk.Checkbutton(r2, text="显示窗口", variable=self.headless_var, onvalue=False, offvalue=True).pack(side=LEFT, padx=10)
 
         # 3. Search Filters
-        filter_group = ttk.Labelframe(left_frame, text="搜索筛选", padding=5)
+        filter_group = ttk.Labelframe(left_frame, text="综合设置", padding=5)
         filter_group.pack(fill=X, pady=2)
         
         fr1 = ttk.Frame(filter_group)
@@ -123,14 +126,26 @@ class BiliBotGUI:
         
         self.sort_map = {"综合排序": "totalrank", "最新发布": "pubdate", "最多播放": "click", "最多弹幕": "dm", "最多收藏": "stow"}
         self.sort_map_rev = {v: k for k, v in self.sort_map.items()}
-        self.sort_cb = ttk.Combobox(fr1, textvariable=self.sort_var, values=list(self.sort_map.keys()), state="readonly", width=9)
+        # Use a separate variable for Combobox display value, not sharing with internal logic variable if possible, 
+        # OR ensure we only store the Display Value in the widget, and map it when saving.
+        # Current implementation binds textvariable=self.sort_var. 
+        # But we also bind <<ComboboxSelected>> to update self.sort_var with the English value? 
+        # Wait, line 129: lambda e: self.sort_var.set(self.sort_map[self.sort_cb.get()])
+        # This overwrites the Combobox's text variable with "totalrank" (English) which is then displayed!
+        # FIX: Remove textvariable binding or use a separate variable for the underlying value.
+        # Best approach: Don't use textvariable for the Combobox if we want to display Chinese but store English.
+        # Just use .get() and .set().
+        
+        self.sort_cb = ttk.Combobox(fr1, values=list(self.sort_map.keys()), state="readonly", width=9)
         self.sort_cb.pack(side=LEFT, padx=2)
-        self.sort_cb.bind("<<ComboboxSelected>>", lambda e: self.sort_var.set(self.sort_map[self.sort_cb.get()]))
+        # self.sort_cb.bind("<<ComboboxSelected>>", ...) -> No need to update a var immediately if we read from CB on save
+        self.sort_cb.current(0) # Default
         
         self.dur_map = {"全部时长": 0, "10分钟以下": 1, "10-30分钟": 2, "30-60分钟": 3, "60分钟以上": 4}
         self.dur_map_rev = {v: k for k, v in self.dur_map.items()}
         self.dur_cb = ttk.Combobox(fr1, values=list(self.dur_map.keys()), state="readonly", width=9)
         self.dur_cb.pack(side=LEFT, padx=2)
+        self.dur_cb.current(0)
 
         fr2 = ttk.Frame(filter_group)
         fr2.pack(fill=X, pady=2)
@@ -139,6 +154,48 @@ class BiliBotGUI:
         self.strat_map_rev = {v: k for k, v in self.strat_map.items()}
         self.strat_cb = ttk.Combobox(fr2, values=list(self.strat_map.keys()), state="readonly", width=10)
         self.strat_cb.pack(side=LEFT, padx=5)
+        self.strat_cb.current(0)
+
+        # Strict Match Checkbox
+        fr3 = ttk.Frame(filter_group)
+        fr3.pack(fill=X, pady=2)
+        ttk.Checkbutton(fr3, text="严格匹配模式 (标题包含关键词)", variable=self.strict_match_var, onvalue=True, offvalue=False).pack(side=LEFT)
+        
+        # Date Filter
+        fr4 = ttk.Frame(filter_group)
+        fr4.pack(fill=X, pady=2)
+        ttk.Label(fr4, text="时间限制:").pack(side=LEFT)
+        
+        self.time_filter_var = tk.StringVar(value="none")
+        self.time_filter_cb = ttk.Combobox(fr4, textvariable=self.time_filter_var, values=["不限制", "近几天", "指定日期范围"], state="readonly", width=12)
+        self.time_filter_cb.pack(side=LEFT, padx=5)
+        self.time_filter_cb.bind("<<ComboboxSelected>>", self.on_time_filter_change)
+        
+        # Dynamic Frames for Date Inputs
+        self.date_input_frame = ttk.Frame(filter_group)
+        self.date_input_frame.pack(fill=X, pady=2)
+        
+        # Recent X Days
+        self.recent_days_frame = ttk.Frame(self.date_input_frame)
+        ttk.Label(self.recent_days_frame, text="最近").pack(side=LEFT)
+        self.recent_days_entry = ttk.Entry(self.recent_days_frame, width=5)
+        self.recent_days_entry.insert(0, "1")
+        self.recent_days_entry.pack(side=LEFT, padx=2)
+        ttk.Label(self.recent_days_frame, text="天").pack(side=LEFT)
+        
+        # Date Range
+        self.date_range_frame = ttk.Frame(self.date_input_frame)
+        ttk.Label(self.date_range_frame, text="从").pack(side=LEFT)
+        
+        self.date_start_entry = ttk.Entry(self.date_range_frame, width=10)
+        self.date_start_entry.pack(side=LEFT, padx=2)
+        ttk.Button(self.date_range_frame, text="📅", width=2, command=self.pick_start_date, bootstyle="info-outline").pack(side=LEFT)
+        
+        ttk.Label(self.date_range_frame, text="到").pack(side=LEFT, padx=(5, 0))
+        
+        self.date_end_entry = ttk.Entry(self.date_range_frame, width=10)
+        self.date_end_entry.pack(side=LEFT, padx=2)
+        ttk.Button(self.date_range_frame, text="📅", width=2, command=self.pick_end_date, bootstyle="info-outline").pack(side=LEFT)
         
         # 4. Browser Config (New)
         browser_group = ttk.Labelframe(left_frame, text="浏览器配置 (高级)", padding=5)
@@ -182,13 +239,15 @@ class BiliBotGUI:
         list_frame.pack(fill=BOTH, expand=YES, pady=2)
         
         cols = ("bv", "title", "author", "date", "views", "status")
-        self.tree = ttk.Treeview(list_frame, columns=cols, show="headings", selectmode="browse")
-        self.tree.heading("bv", text="BV号")
-        self.tree.heading("title", text="标题")
-        self.tree.heading("author", text="UP主")
-        self.tree.heading("date", text="日期")
-        self.tree.heading("views", text="播放")
-        self.tree.heading("status", text="状态")
+        self.tree = ttk.Treeview(list_frame, columns=cols, show="headings", selectmode="browse", bootstyle="info")
+        
+        # Configure columns with sorting
+        self.tree.heading("bv", text="BV号", command=lambda: self.sort_tree("bv", False))
+        self.tree.heading("title", text="标题", command=lambda: self.sort_tree("title", False))
+        self.tree.heading("author", text="UP主", command=lambda: self.sort_tree("author", False))
+        self.tree.heading("date", text="日期", command=lambda: self.sort_tree("date", False))
+        self.tree.heading("views", text="播放", command=lambda: self.sort_tree("views", False))
+        self.tree.heading("status", text="状态", command=lambda: self.sort_tree("status", False))
         
         self.tree.column("bv", width=100)
         self.tree.column("title", width=200)
@@ -203,12 +262,40 @@ class BiliBotGUI:
         self.tree.pack(side=LEFT, fill=BOTH, expand=YES)
         scroll.pack(side=RIGHT, fill=Y)
 
+        # Context Menu
+        self.tree_menu = tk.Menu(self.root, tearoff=0)
+        self.tree_menu.add_command(label="复制 BV 号", command=self.copy_bv)
+        self.tree_menu.add_command(label="复制 标题", command=self.copy_title)
+        self.tree.bind("<Button-3>", self.show_context_menu)
+
         # Logs
         log_frame = ttk.Labelframe(right_frame, text="运行日志", padding=5)
         log_frame.pack(fill=BOTH, expand=YES, pady=2) # Split space with list
         
         self.log_area = scrolledtext.ScrolledText(log_frame, height=10, state='normal')
         self.log_area.pack(fill=BOTH, expand=YES)
+
+    def on_time_filter_change(self, event=None):
+        selection = self.time_filter_cb.get()
+        self.recent_days_frame.pack_forget()
+        self.date_range_frame.pack_forget()
+        
+        if selection == "近几天":
+            self.recent_days_frame.pack(fill=X, padx=5)
+        elif selection == "指定日期范围":
+            self.date_range_frame.pack(fill=X, padx=5)
+
+    def pick_start_date(self):
+        date = Querybox.get_date(parent=self.date_range_frame, title="选择开始日期")
+        if date:
+            self.date_start_entry.delete(0, tk.END)
+            self.date_start_entry.insert(0, date.strftime("%Y-%m-%d"))
+
+    def pick_end_date(self):
+        date = Querybox.get_date(parent=self.date_range_frame, title="选择结束日期")
+        if date:
+            self.date_end_entry.delete(0, tk.END)
+            self.date_end_entry.insert(0, date.strftime("%Y-%m-%d"))
 
     def load_config(self):
         if not os.path.exists(self.config_file):
@@ -258,6 +345,25 @@ class BiliBotGUI:
             strat_val = strategy.get('selection', 'order')
             if strat_val in self.strat_map_rev:
                 self.strat_cb.set(self.strat_map_rev[strat_val])
+            
+            self.strict_match_var.set(strategy.get('strict_title_match', False))
+            
+            # Time Filter
+            time_filter = filters.get('time_range', {})
+            t_type = time_filter.get('type', 'none')
+            t_map = {"none": "不限制", "recent": "近几天", "range": "指定日期范围"}
+            if t_type in t_map:
+                self.time_filter_cb.set(t_map[t_type])
+                
+            if t_type == "recent":
+                self.recent_days_entry.delete(0, tk.END)
+                self.recent_days_entry.insert(0, str(time_filter.get('value', 1)))
+            elif t_type == "range":
+                val = time_filter.get('value', {})
+                if val.get('start'): self.date_start_entry.delete(0, tk.END); self.date_start_entry.insert(0, val['start'])
+                if val.get('end'): self.date_end_entry.delete(0, tk.END); self.date_end_entry.insert(0, val['end'])
+            
+            self.on_time_filter_change() # Update UI visibility
 
         except Exception as e:
             logger.error(f"Config Load Error: {e}")
@@ -273,7 +379,25 @@ class BiliBotGUI:
             if not comment_txt:
                 messagebox.showerror("错误", "请输入评论内容")
                 return False
-                
+            
+            # Time Filter Logic
+            t_selection = self.time_filter_cb.get()
+            time_filter = {"type": "none", "value": None}
+            if t_selection == "近几天":
+                try:
+                    days = int(self.recent_days_entry.get())
+                    time_filter = {"type": "recent", "value": days}
+                except:
+                    messagebox.showerror("错误", "请输入有效的天数")
+                    return False
+            elif t_selection == "指定日期范围":
+                start = self.date_start_entry.get()
+                end = self.date_end_entry.get()
+                if not start or not end:
+                    messagebox.showerror("错误", "请输入日期范围")
+                    return False
+                time_filter = {"type": "range", "value": {"start": start, "end": end}}
+
             conf = {
                 "account": {"cookie_file": "cookies.json"},
                 "search": {
@@ -281,10 +405,12 @@ class BiliBotGUI:
                     "max_videos_per_keyword": int(self.max_videos.get()),
                     "filter": {
                         "sort": self.sort_map.get(self.sort_cb.get(), "totalrank"),
-                        "duration": self.dur_map.get(self.dur_cb.get(), 0)
+                        "duration": self.dur_map.get(self.dur_cb.get(), 0),
+                        "time_range": time_filter
                     },
                     "strategy": {
                         "selection": self.strat_map.get(self.strat_cb.get(), "order"),
+                        "strict_title_match": self.strict_match_var.get(),
                         "random_pool_size": 20
                     }
                 },
@@ -345,6 +471,46 @@ class BiliBotGUI:
             backend_main.stop_task()
             self.stop_btn.config(state="disabled")
 
+    def sort_tree(self, col, reverse):
+        l = [(self.tree.set(k, col), k) for k in self.tree.get_children('')]
+        
+        # Helper to convert to int if possible for numeric sort
+        def try_int(val):
+            try: return int(val.replace("万", "0000").replace("+", "")) # Basic cleaning
+            except: return val
+            
+        try:
+            l.sort(key=lambda t: try_int(t[0]), reverse=reverse)
+        except:
+            l.sort(reverse=reverse)
+
+        # Rearrange items in sorted positions
+        for index, (val, k) in enumerate(l):
+            self.tree.move(k, '', index)
+
+        # Reverse sort next time
+        self.tree.heading(col, command=lambda: self.sort_tree(col, not reverse))
+
+    def show_context_menu(self, event):
+        item = self.tree.identify_row(event.y)
+        if item:
+            self.tree.selection_set(item)
+            self.tree_menu.post(event.x_root, event.y_root)
+
+    def copy_bv(self):
+        item = self.tree.selection()
+        if item:
+            val = self.tree.item(item[0])['values'][0]
+            self.root.clipboard_clear()
+            self.root.clipboard_append(val)
+
+    def copy_title(self):
+        item = self.tree.selection()
+        if item:
+            val = self.tree.item(item[0])['values'][1]
+            self.root.clipboard_clear()
+            self.root.clipboard_append(val)
+
     def update_video_list(self, video_info):
         """Callback to update video list in GUI thread"""
         def _update():
@@ -356,6 +522,8 @@ class BiliBotGUI:
                     break
             
             if not found:
+                # Add tag for striped rows
+                tags = ('even',) if len(self.tree.get_children()) % 2 == 0 else ('odd',)
                 self.tree.insert("", "end", values=(
                     video_info.get('bv', ''),
                     video_info.get('title', 'Unknown'),
@@ -363,7 +531,12 @@ class BiliBotGUI:
                     video_info.get('date', ''),
                     video_info.get('views', ''),
                     "Pending"
-                ))
+                ), tags=tags)
+        
+        # Configure tags for striped rows (if supported by theme, otherwise subtle difference)
+        self.tree.tag_configure('odd', background='#F0F0F0')
+        self.tree.tag_configure('even', background='#FFFFFF')
+        
         self.root.after(0, _update)
 
     def update_video_status(self, bvid, status):
@@ -385,11 +558,11 @@ class BiliBotGUI:
                 video_callback=self.update_video_list,
                 status_callback=self.update_video_status
             )
-            self.progress_var.set("任务完成")
+            self.root.after(0, lambda: self.progress_var.set("任务完成"))
 
         except Exception as e:
             logger.error(f"任务异常: {e}")
-            self.progress_var.set("任务异常")
+            self.root.after(0, lambda: self.progress_var.set("任务异常"))
         finally:
             self.running = False
             self.root.after(0, lambda: self.start_btn.config(state="normal"))

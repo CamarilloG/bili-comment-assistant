@@ -13,7 +13,18 @@ class BilibiliSelectors:
         "title": ".bili-video-card__info--tit, h3.t, .title",
         "author": ".bili-video-card__info--author, .up-name, .author",
         "date": ".bili-video-card__info--date, .time",
-        "stats": ".bili-video-card__stats--item, .so-icon-watch-num, .so-icon-time"
+        "stats": ".bili-video-card__stats--item, .so-icon-watch-num, .so-icon-time",
+        "next_page": ".vui_pagenation--btns button:has-text('下一页'), .vui_pagenation--btn-side:has-text('下一页'), .pages .next"
+    }
+
+    # Filters
+    FILTER = {
+        "1day": ".search-condition-row button:has-text('最近一天')",
+        "1week": ".search-condition-row button:has-text('最近一周')",
+        "6months": ".search-condition-row button:has-text('最近半年')",
+        "all_dates": ".search-condition-row button:has-text('全部日期')",
+        "date_picker_trigger": ".search-date-picker__trigger",
+        "date_picker_panel": ".search-date-picker"
     }
 
     @staticmethod
