@@ -9,7 +9,7 @@ def build():
         "--noconfirm",
         "--onefile",
         "--windowed",
-        "--name", "BiliCommentBot",
+        "--name", "BiliCommentBot_V1.1",
         "--hidden-import", "ttkbootstrap",
         "--collect-all", "ttkbootstrap",
         "--clean",
@@ -22,7 +22,7 @@ def build():
     try:
         subprocess.check_call(args)
         print("\nBuild completed successfully!")
-        print(f"Executable can be found in: {os.path.join(os.getcwd(), 'dist', 'BiliCommentBot.exe')}")
+        print(f"Executable can be found in: {os.path.join(os.getcwd(), 'dist', 'BiliCommentBot_V1.1.exe')}")
     except subprocess.CalledProcessError as e:
         print(f"\nBuild failed with error code {e.returncode}")
     except Exception as e:

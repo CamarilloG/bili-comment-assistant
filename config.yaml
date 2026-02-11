@@ -5,19 +5,17 @@ search:
   - AI开发
   max_videos_per_keyword: 2
   filter:
-    sort: click
-    duration: 1
+    sort: pubdate
+    duration: 0
     time_range:
-      type: range
-      value:
-        start: '2026-03-13'
-        end: '2026-01-05'
+      type: none
+      value: null
   strategy:
     selection: order
     strict_title_match: false
     random_pool_size: 20
 comment:
-  enable_image: false
+  enable_image: true
   texts:
   - UP视频做的好棒！支持！
   images:
@@ -25,7 +23,7 @@ comment:
 behavior:
   min_delay: 3.0
   max_delay: 5.0
-  headless: true
+  headless: false
   timeout: 30000
 browser:
   path: C:/Program Files/Google/Chrome/Application/chrome.exe

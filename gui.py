@@ -28,7 +28,7 @@ class TextHandler:
 class BiliBotGUI:
     def __init__(self, root):
         self.root = root
-        self.root.title("Bilibili 自动评论助手")
+        self.root.title("Bilibili 自动评论助手 V1.1")
         self.root.geometry("1200x850")
         self.config_file = "config.yaml"
         
