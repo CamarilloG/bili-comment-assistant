@@ -35,25 +35,16 @@ class BilibiliSelectors:
     def get_search_video_link():
         return BilibiliSelectors.SEARCH["link"]
 
-    # Comment
     COMMENT = {
-        "container": "#comment, .comment-container, .comment-m-v, .comment-app",
-        "input": ".reply-box-textarea, textarea.reply-input, div.bili-rich-text-input, div[contenteditable='true']",
-        "send_btn": [
-            ".reply-box-send-btn", 
-            ".send-text", 
-            "div.reply-box-send-btn",
-            "button.reply-box-send-btn"
-        ],
-        "image_icon": [
-            ".reply-box-image-icon", 
-            ".editor-tool-item.image", 
-            ".reply-toolbar .image-upload",
-            "button.tool-btn:has(bili-icon[icon*='image'])",
-            "button.tool-btn:has(bili-icon)"
-        ],
-        "image_preview": ".reply-image-preview, .image-preview-item, .preview-img",
-        "file_input": "input[type='file']",
+        "container": "#commentapp, bili-comments",
+        "bili_comments": "bili-comments",
+        "comment_box": "bili-comment-box",
+        "rich_textarea": "bili-comment-rich-textarea",
+        "editor": ".brt-editor",
+        "pictures_upload": "bili-comment-pictures-upload",
+        "image_btn_icon": "BDC/image_line/3",
+        "send_btn_selector": "#pub > button",
+        "footer": "#footer",
         "captcha": ".geetest_window, .bili-mini-mask"
     }
 
@@ -70,13 +61,29 @@ class BilibiliSelectors:
         return BilibiliSelectors.COMMENT["container"]
 
     @staticmethod
-    def get_comment_input():
-        return BilibiliSelectors.COMMENT["input"]
-        
-    @staticmethod
-    def get_comment_send_button():
-        return BilibiliSelectors.COMMENT["send_btn"]
+    def get_bili_comments():
+        return BilibiliSelectors.COMMENT["bili_comments"]
 
     @staticmethod
-    def get_image_upload_icons():
-        return BilibiliSelectors.COMMENT["image_icon"]
+    def get_comment_box():
+        return BilibiliSelectors.COMMENT["comment_box"]
+
+    @staticmethod
+    def get_rich_textarea():
+        return BilibiliSelectors.COMMENT["rich_textarea"]
+
+    @staticmethod
+    def get_editor():
+        return BilibiliSelectors.COMMENT["editor"]
+
+    @staticmethod
+    def get_pictures_upload():
+        return BilibiliSelectors.COMMENT["pictures_upload"]
+
+    @staticmethod
+    def get_send_btn_selector():
+        return BilibiliSelectors.COMMENT["send_btn_selector"]
+
+    @staticmethod
+    def get_footer():
+        return BilibiliSelectors.COMMENT["footer"]

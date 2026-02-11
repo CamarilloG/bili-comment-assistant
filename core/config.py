@@ -22,7 +22,8 @@ class ConfigValidator:
         },
         "comment": {
             "texts": [],
-            "images": []
+            "images": [],
+            "enable_image": False
         },
         "behavior": {
             "min_delay": 5,
@@ -80,6 +81,8 @@ class ConfigValidator:
                 validated["comment"]["texts"] = config["comment"]["texts"]
             if "images" in config["comment"]:
                 validated["comment"]["images"] = config["comment"]["images"]
+            if "enable_image" in config["comment"]:
+                validated["comment"]["enable_image"] = bool(config["comment"]["enable_image"])
         
         if "behavior" in config:
             if "min_delay" in config["behavior"]:
