@@ -30,3 +30,18 @@ behavior:
 browser:
   path: C:/Program Files/Google/Chrome/Application/chrome.exe
   port: 0
+warmup:
+  basic:
+    duration_minutes: 30
+    max_videos: 50
+  behavior:
+    watch_time_min: 20
+    watch_time_max: 240
+    random_pause: true
+    random_scroll: true
+    view_comment: true
+  comment:
+    enable: false
+    probability: 0.1
+    type: template
+  source: recommend

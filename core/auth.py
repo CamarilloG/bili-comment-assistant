@@ -38,30 +38,45 @@ class AuthManager:
 
     def _check_login_status(self) -> bool:
         """
-        Check if current session is logged in by visiting a user page.
+        Check if current session is logged in by visiting homepage and checking for login button vs avatar.
         """
         page = self.context.new_page()
         try:
             logger.debug("正在检查登录状态...")
             page.goto("https://www.bilibili.com/", wait_until="domcontentloaded")
             
-            # Wait for header to load
+            # Wait for header elements
             try:
-                # Use a more generic selector for header
-                page.wait_for_selector(".bili-header, .header-entry-avatar", timeout=10000)
+                # Wait for either avatar or login button
+                page.wait_for_selector(".header-entry-avatar, .header-login-entry", timeout=10000)
             except Exception:
                 logger.warning("等待头部元素超时。")
             
-            if page.locator(BilibiliSelectors.get_login_avatar()).count() > 0:
+            # Check for "登录" text in header-login-entry
+            login_entry = page.locator(".header-login-entry")
+            if login_entry.count() > 0:
+                if "登录" in login_entry.inner_text():
+                    logger.debug("找到'登录'按钮。用户未登录。")
+                    return False
+            
+            # Check for avatar
+            if page.locator(".header-entry-avatar").count() > 0:
                 logger.debug("找到头像。用户已登录。")
                 return True
-                
-            if page.locator(BilibiliSelectors.get_login_button()).count() > 0:
-                logger.debug("找到登录入口。用户未登录。")
+            
+            # Fallback: Check if we can access personal center
+            # If we are not logged in, this usually redirects to login page
+            try:
+                page.goto("https://account.bilibili.com/account/home", wait_until="domcontentloaded")
+                if "passport.bilibili.com/login" in page.url:
+                    logger.debug("个人中心跳转至登录页。用户未登录。")
+                    return False
+                else:
+                    logger.debug("个人中心访问正常。用户已登录。")
+                    return True
+            except:
                 return False
-                
-            # Fallback
-            return False
+
         except Exception as e:
             logger.error(f"检查登录状态出错: {e}")
             return False

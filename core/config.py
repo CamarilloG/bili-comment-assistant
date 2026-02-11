@@ -29,6 +29,10 @@ class ConfigValidator:
             "max_delay": 15,
             "headless": False,
             "timeout": 30000
+        },
+        "browser": {
+            "path": "",
+            "port": 0
         }
     }
     
@@ -86,6 +90,9 @@ class ConfigValidator:
                 validated["behavior"]["headless"] = bool(config["behavior"]["headless"])
             if "timeout" in config["behavior"]:
                 validated["behavior"]["timeout"] = max(1000, int(config["behavior"]["timeout"]))
+        
+        if "browser" in config:
+            validated["browser"] = config["browser"]
         
         ConfigValidator._validate_required_fields(validated)
         
