@@ -27,9 +27,14 @@ class WarmupManager:
         Returns True if interrupted (should stop), False if completed normally."""
         return self._stop_event.wait(seconds)
 
-    def run(self, status_callback=None):
-        """Main loop for warmup task"""
-        duration_minutes = self.warmup_config.get('basic', {}).get('duration_minutes', 30)
+    def run(self, status_callback=None, duration_override: int = None):
+        """Main loop for warmup task
+
+        Args:
+            status_callback: 状态回调函数
+            duration_override: 覆盖配置中的养号时长（分钟），用于验证码冷却流程
+        """
+        duration_minutes = duration_override if duration_override is not None else self.warmup_config.get('basic', {}).get('duration_minutes', 30)
         max_videos = self.warmup_config.get('basic', {}).get('max_videos', 20)
         end_time = time.time() + (duration_minutes * 60)
         

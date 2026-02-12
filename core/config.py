@@ -34,6 +34,11 @@ class ConfigValidator:
         "browser": {
             "path": "",
             "port": 0
+        },
+        "captcha": {
+            "max_count": 3,
+            "quiet_minutes": 5,
+            "warmup_minutes": 30
         }
     }
     
@@ -96,6 +101,15 @@ class ConfigValidator:
         
         if "browser" in config:
             validated["browser"] = config["browser"]
+        
+        if "captcha" in config:
+            captcha = config["captcha"]
+            if "max_count" in captcha:
+                validated["captcha"]["max_count"] = max(1, int(captcha["max_count"]))
+            if "quiet_minutes" in captcha:
+                validated["captcha"]["quiet_minutes"] = max(1, int(captcha["quiet_minutes"]))
+            if "warmup_minutes" in captcha:
+                validated["captcha"]["warmup_minutes"] = max(5, int(captcha["warmup_minutes"]))
         
         # Preserve warmup config section (used by warmup mode)
         if "warmup" in config:

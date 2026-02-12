@@ -266,36 +266,79 @@ class CommentManager:
         logger.info("已点击发送按钮。")
         return True
 
-    def _verify_sent(self) -> bool:
+    def _check_captcha(self) -> bool:
+        """检测页面上是否存在验证码弹窗
+
+        Returns:
+            True 表示检测到验证码，False 表示未检测到
+        """
+        try:
+            captcha_selectors = BilibiliSelectors.COMMENT["captcha"]
+            if self.page.locator(captcha_selectors).count() > 0:
+                logger.error(
+                    "[风控] 检测到极验验证码(geetest)！"
+                    "B站风控系统已拦截当前操作，将放弃本次评论并进入冷却流程。"
+                )
+                return True
+            # 额外检测 geetest_widget（验证码主容器）
+            if self.page.locator(".geetest_widget").count() > 0:
+                logger.error(
+                    "[风控] 检测到极验验证码弹窗(geetest_widget)！"
+                    "B站风控系统已拦截当前操作，将放弃本次评论并进入冷却流程。"
+                )
+                return True
+        except Exception as e:
+            logger.debug(f"验证码检测过程出现异常: {e}")
+        return False
+
+    def _verify_sent(self) -> str:
+        """验证评论是否发送成功
+
+        Returns:
+            "success" - 评论发布成功
+            "captcha" - 检测到验证码，触发风控
+            "failed"  - 发送失败（非验证码原因）
+        """
         self.page.wait_for_timeout(2000)
 
-        if self.page.locator(BilibiliSelectors.COMMENT["captcha"]).count() > 0:
-            logger.error("检测到验证码！请手动解决。")
-            return False
+        if self._check_captcha():
+            return "captcha"
 
         editor_text = self.page.evaluate(JS_GET_EDITOR_TEXT)
         if editor_text is not None and editor_text == "":
             logger.info("评论发布成功 (输入框已清空)。")
-            return True
+            return "success"
         elif editor_text is not None:
             logger.warning(f"评论可能未发送 (输入框未清空)。剩余文本: {editor_text[:20]}...")
-            return False
+            return "failed"
         else:
             logger.warning("无法验证发送状态，假定已发送。")
-            return True
+            return "success"
 
     @retry(max_attempts=2, delay=3.0, exceptions=(PlaywrightTimeoutError,))
-    def post_comment(self, url: str, text: str, image_path: str = None) -> bool:
+    def post_comment(self, url: str, text: str, image_path: str = None) -> str:
+        """发布评论到指定视频
+
+        Returns:
+            "success" - 评论发布成功
+            "captcha" - 检测到验证码，触发风控
+            "failed"  - 发送失败（非验证码原因）
+        """
         logger.info(f"正在导航至视频: {url}")
         try:
             self.page.goto(url, wait_until="domcontentloaded")
             self.page.wait_for_timeout(2000)
 
+            # 导航完成后立即检测验证码（风控可能在页面加载时就触发）
+            if self._check_captcha():
+                logger.warning("[风控] 页面加载后即检测到验证码，可能是导航阶段触发的风控拦截。")
+                return "captcha"
+
             if not self._scroll_to_comments():
-                return False
+                return "failed"
 
             if not self._activate_editor():
-                return False
+                return "failed"
 
             if image_path and os.path.exists(image_path):
                 self._upload_image(image_path)
@@ -304,7 +347,7 @@ class CommentManager:
 
             logger.info(f"输入评论: {text}")
             if not self._input_text(text):
-                return False
+                return "failed"
 
             self.page.wait_for_timeout(500)
 
@@ -312,10 +355,14 @@ class CommentManager:
             self.page.evaluate(JS_HOVER_BODY_AND_PREPARE)
             self.page.wait_for_timeout(300)
             if not self._click_send():
-                return False
+                return "failed"
 
             return self._verify_sent()
 
         except Exception as e:
             logger.error(f"发布评论出错: {e}")
-            return False
+            # 检查异常是否由验证码/风控导致的页面异常引起
+            if self._check_captcha():
+                logger.warning("[风控] 评论过程异常且检测到验证码，判定为风控拦截。")
+                return "captcha"
+            return "failed"
