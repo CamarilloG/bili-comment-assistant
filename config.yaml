@@ -2,32 +2,36 @@ account:
   cookie_file: cookies.json
 search:
   keywords:
-  - AI开发
-  max_videos_per_keyword: 2
+  - 三角洲行动
+  max_videos_per_keyword: 200
   filter:
-    sort: pubdate
+    sort: click
     duration: 0
     time_range:
-      type: none
-      value: null
+      type: recent
+      value: 3
   strategy:
-    selection: order
+    selection: random
     strict_title_match: false
     random_pool_size: 20
 comment:
-  enable_image: false
+  enable_image: true
   texts:
-  - UP视频做的好棒！支持！
+  - 三角洲玩家一起玩👇
   images:
-  - F:/图片/Saved Pictures/afde1a50f8198618426f57970ced2e738ad4e6c4.jpg
+  - C:/Users/cccc1m/Pictures/7f6b0bd451f30cac84cd8342a24a916b.jpg
 behavior:
-  min_delay: 999.0
-  max_delay: 9999.0
+  min_delay: 30.0
+  max_delay: 40.0
   headless: false
   timeout: 30000
 browser:
   path: C:/Program Files/Google/Chrome/Application/chrome.exe
   port: 0
+captcha:
+  max_count: 3
+  quiet_minutes: 5
+  warmup_minutes: 30
 warmup:
   basic:
     duration_minutes: 30

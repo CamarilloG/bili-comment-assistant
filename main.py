@@ -12,6 +12,8 @@ from core.comment import CommentManager
 from core.history import HistoryManager
 from core.config import ConfigValidator
 from core.warmup import WarmupManager
+from core.captcha_tracker import CaptchaTracker
+from core.notifier import CaptchaNotifier
 from utils.logger import get_logger
 from utils.date_parser import parse_bilibili_date
 
@@ -123,18 +125,30 @@ def main(video_callback=None, status_callback=None):
         search_mgr = SearchManager(search_page)
         comment_mgr = CommentManager(comment_page)
         history_mgr = HistoryManager()
+        captcha_tracker = CaptchaTracker()
+        captcha_notifier = CaptchaNotifier()
+        
+        # 验证码冷却相关配置
+        captcha_config = config.get("captcha", {})
+        captcha_max_count = captcha_config.get("max_count", 3)
+        captcha_quiet_minutes = captcha_config.get("quiet_minutes", 5)
+        captcha_warmup_base = captcha_config.get("warmup_minutes", 30)
+        
+        # 动态延迟倍率（验证码触发后会增大）
+        delay_multiplier = 1.0
         
         keywords = config["search"]["keywords"]
         target_count = config["search"]["max_videos_per_keyword"]
         total_success = 0
+        captcha_terminated = False
         
         for keyword in keywords:
-            if _stop_event.is_set(): break
+            if _stop_event.is_set() or captcha_terminated: break
             if total_success >= target_count: break
             logger.info(f"正在处理关键词: {keyword}")
             is_first_page = True
             
-            while total_success < target_count and not _stop_event.is_set():
+            while total_success < target_count and not _stop_event.is_set() and not captcha_terminated:
                 strategy_config = config["search"].get("strategy", {})
                 selection_mode = strategy_config.get("selection", "order")
                 strict_match = strategy_config.get("strict_title_match", False)
@@ -178,7 +192,7 @@ def main(video_callback=None, status_callback=None):
                 if candidate_videos:
                     if selection_mode == "random": random.shuffle(candidate_videos)
                     for video_info in candidate_videos:
-                        if _stop_event.is_set() or total_success >= target_count: break
+                        if _stop_event.is_set() or total_success >= target_count or captcha_terminated: break
                         if video_callback: video_callback(video_info)
                         if status_callback: status_callback(video_info['bv'], "处理中...")
                         
@@ -187,24 +201,74 @@ def main(video_callback=None, status_callback=None):
                         if config["comment"].get("enable_image", False) and config["comment"].get("images"):
                             image_path = random.choice(config["comment"]["images"])
                         
-                        success = comment_mgr.post_comment(video_info['url'], text, image_path)
-                        status = "成功" if success else "失败"
+                        result = comment_mgr.post_comment(video_info['url'], text, image_path)
+                        
+                        # ===== 验证码冷却流程 =====
+                        if result == "captcha":
+                            log_comment_result(video_info, "验证码拦截", text)
+                            if status_callback: status_callback(video_info['bv'], "验证码拦截")
+                            
+                            # 1. 记录并获取今日累计次数
+                            captcha_count = captcha_tracker.record()
+                            
+                            # 2. 检查是否超过上限
+                            if captcha_count >= captcha_max_count:
+                                captcha_notifier.notify_terminated(captcha_count, captcha_max_count)
+                                captcha_terminated = True
+                                break
+                            
+                            # 3. 计算冷却时长
+                            cooldown_minutes = captcha_tracker.get_cooldown_minutes(captcha_warmup_base)
+                            
+                            # 4. 发送通知
+                            captcha_notifier.notify(captcha_count, cooldown_minutes, captcha_quiet_minutes)
+                            
+                            # 5. 静默等待
+                            logger.info(f"[风控冷却] 开始静默等待 {captcha_quiet_minutes} 分钟...")
+                            if status_callback: status_callback(video_info['bv'], f"静默等待{captcha_quiet_minutes}分钟")
+                            if _stop_event.wait(captcha_quiet_minutes * 60):
+                                logger.info("静默等待期间收到停止信号，终止任务。")
+                                break
+                            
+                            # 6. 进入养号模式
+                            logger.info(f"[风控冷却] 静默结束，进入养号模式 {cooldown_minutes} 分钟...")
+                            if status_callback: status_callback(video_info['bv'], f"养号冷却{cooldown_minutes}分钟")
+                            try:
+                                warmup_mgr = WarmupManager(context, config)
+                                warmup_mgr.run(duration_override=cooldown_minutes)
+                            except Exception as e:
+                                logger.error(f"冷却养号过程出错: {e}")
+                            
+                            # 7. 增大后续评论间隔
+                            delay_multiplier *= 1.5
+                            logger.info(f"[风控冷却] 冷却完成，评论间隔倍率已调整为 {delay_multiplier:.1f}x")
+                            
+                            # 跳过当前视频，继续下一个
+                            continue
+                        
+                        # ===== 正常评论结果处理 =====
+                        status = "成功" if result == "success" else "失败"
                         log_comment_result(video_info, status, text)
                         if status_callback: status_callback(video_info['bv'], status)
                         
-                        if success:
+                        if result == "success":
                             history_mgr.add(video_info['bv'])
                             total_success += 1
                         
-                        delay = random.uniform(config["behavior"].get("min_delay", 5), config["behavior"].get("max_delay", 15))
-                        logger.info(f"评论间隔延迟: 等待 {delay:.1f} 秒后继续下一个视频...")
+                        base_min = config["behavior"].get("min_delay", 5)
+                        base_max = config["behavior"].get("max_delay", 15)
+                        delay = random.uniform(base_min * delay_multiplier, base_max * delay_multiplier)
+                        logger.info(f"评论间隔延迟: 等待 {delay:.1f} 秒后继续下一个视频...{' (间隔已因风控增大)' if delay_multiplier > 1.0 else ''}")
                         if _stop_event.wait(delay):
                             logger.info("延迟期间收到停止信号，终止任务。")
                             break
                 
-                if total_success >= target_count or not search_mgr.go_to_next_page(): break
+                if total_success >= target_count or captcha_terminated or not search_mgr.go_to_next_page(): break
             
-        logger.info(f"所有任务已完成。本次成功评论: {total_success}/{target_count}")
+        if captcha_terminated:
+            logger.info(f"任务因验证码次数达上限而终止。本次成功评论: {total_success}/{target_count}")
+        else:
+            logger.info(f"所有任务已完成。本次成功评论: {total_success}/{target_count}")
         browser.close()
 
 def run_warmup(status_callback=None):
