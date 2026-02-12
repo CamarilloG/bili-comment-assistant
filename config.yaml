@@ -15,14 +15,14 @@ search:
     strict_title_match: false
     random_pool_size: 20
 comment:
-  enable_image: true
+  enable_image: false
   texts:
   - UP视频做的好棒！支持！
   images:
   - F:/图片/Saved Pictures/afde1a50f8198618426f57970ced2e738ad4e6c4.jpg
 behavior:
-  min_delay: 3.0
-  max_delay: 5.0
+  min_delay: 999.0
+  max_delay: 9999.0
   headless: false
   timeout: 30000
 browser:
@@ -36,8 +36,13 @@ warmup:
     watch_time_min: 20
     watch_time_max: 240
     random_pause: true
+    pause_prob: 0.005
     random_scroll: true
+    scroll_prob: 0.01
     view_comment: true
+    view_comment_prob: 0.005
+    random_like: true
+    like_prob: 0.3
   comment:
     enable: false
     probability: 0.1
