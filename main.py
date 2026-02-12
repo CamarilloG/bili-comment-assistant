@@ -196,7 +196,11 @@ def main(video_callback=None, status_callback=None):
                             history_mgr.add(video_info['bv'])
                             total_success += 1
                         
-                        time.sleep(random.uniform(config["behavior"].get("min_delay", 5), config["behavior"].get("max_delay", 15)))
+                        delay = random.uniform(config["behavior"].get("min_delay", 5), config["behavior"].get("max_delay", 15))
+                        logger.info(f"评论间隔延迟: 等待 {delay:.1f} 秒后继续下一个视频...")
+                        if _stop_event.wait(delay):
+                            logger.info("延迟期间收到停止信号，终止任务。")
+                            break
                 
                 if total_success >= target_count or not search_mgr.go_to_next_page(): break
             

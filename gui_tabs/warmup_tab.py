@@ -21,8 +21,13 @@ class WarmupTab(ttk.Frame):
         self.watch_max_var = tk.IntVar(value=240)
         
         self.random_pause_var = tk.BooleanVar(value=True)
+        self.pause_prob_var = tk.DoubleVar(value=0.08)
         self.random_scroll_var = tk.BooleanVar(value=True)
+        self.scroll_prob_var = tk.DoubleVar(value=0.10)
         self.view_comment_var = tk.BooleanVar(value=True)
+        self.view_comment_prob_var = tk.DoubleVar(value=0.05)
+        self.random_like_var = tk.BooleanVar(value=True)
+        self.like_prob_var = tk.DoubleVar(value=0.30)
         
         self.enable_comment_var = tk.BooleanVar(value=False)
         self.comment_prob_var = tk.DoubleVar(value=0.1)
@@ -68,9 +73,30 @@ class WarmupTab(ttk.Frame):
         ttk.Label(r3, text="-").pack(side=LEFT)
         ttk.Entry(r3, textvariable=self.watch_max_var, width=4).pack(side=LEFT, padx=2)
         
-        ttk.Checkbutton(behavior_group, text="随机暂停播放", variable=self.random_pause_var, bootstyle="round-toggle").pack(anchor=W, pady=2)
-        ttk.Checkbutton(behavior_group, text="随机滚动页面", variable=self.random_scroll_var, bootstyle="round-toggle").pack(anchor=W, pady=2)
-        ttk.Checkbutton(behavior_group, text="随机查看评论区", variable=self.view_comment_var, bootstyle="round-toggle").pack(anchor=W, pady=2)
+        # Each behavior: toggle + probability input
+        pause_row = ttk.Frame(behavior_group)
+        pause_row.pack(fill=X, pady=2)
+        ttk.Checkbutton(pause_row, text="随机暂停播放", variable=self.random_pause_var, bootstyle="round-toggle").pack(side=LEFT)
+        ttk.Entry(pause_row, textvariable=self.pause_prob_var, width=5).pack(side=RIGHT, padx=2)
+        ttk.Label(pause_row, text="概率:").pack(side=RIGHT)
+
+        scroll_row = ttk.Frame(behavior_group)
+        scroll_row.pack(fill=X, pady=2)
+        ttk.Checkbutton(scroll_row, text="随机滚动页面", variable=self.random_scroll_var, bootstyle="round-toggle").pack(side=LEFT)
+        ttk.Entry(scroll_row, textvariable=self.scroll_prob_var, width=5).pack(side=RIGHT, padx=2)
+        ttk.Label(scroll_row, text="概率:").pack(side=RIGHT)
+
+        comment_view_row = ttk.Frame(behavior_group)
+        comment_view_row.pack(fill=X, pady=2)
+        ttk.Checkbutton(comment_view_row, text="随机查看评论区", variable=self.view_comment_var, bootstyle="round-toggle").pack(side=LEFT)
+        ttk.Entry(comment_view_row, textvariable=self.view_comment_prob_var, width=5).pack(side=RIGHT, padx=2)
+        ttk.Label(comment_view_row, text="概率:").pack(side=RIGHT)
+
+        like_row = ttk.Frame(behavior_group)
+        like_row.pack(fill=X, pady=2)
+        ttk.Checkbutton(like_row, text="随机点赞视频", variable=self.random_like_var, bootstyle="round-toggle").pack(side=LEFT)
+        ttk.Entry(like_row, textvariable=self.like_prob_var, width=5).pack(side=RIGHT, padx=2)
+        ttk.Label(like_row, text="概率:").pack(side=RIGHT)
 
         # 3. Comment Behavior
         comment_group = ttk.Labelframe(left_frame, text="评论行为 (低频)", padding=5)
@@ -112,7 +138,7 @@ class WarmupTab(ttk.Frame):
         self.current_video_label = ttk.Label(status_group, text="当前视频: 无", font=("", 10, "bold"))
         self.current_video_label.pack(anchor=W, pady=2)
         
-        self.stats_label = ttk.Label(status_group, text="已观看: 0 | 累计时长: 0 min | 已评论: 0")
+        self.stats_label = ttk.Label(status_group, text="已观看: 0 | 累计时长: 0 min | 已点赞: 0 | 已评论: 0")
         self.stats_label.pack(anchor=W, pady=2)
 
         log_frame = ttk.Labelframe(right_frame, text="运行日志", padding=5)
@@ -136,8 +162,13 @@ class WarmupTab(ttk.Frame):
             self.watch_min_var.set(behavior.get('watch_time_min', 20))
             self.watch_max_var.set(behavior.get('watch_time_max', 240))
             self.random_pause_var.set(behavior.get('random_pause', True))
+            self.pause_prob_var.set(behavior.get('pause_prob', 0.08))
             self.random_scroll_var.set(behavior.get('random_scroll', True))
+            self.scroll_prob_var.set(behavior.get('scroll_prob', 0.10))
             self.view_comment_var.set(behavior.get('view_comment', True))
+            self.view_comment_prob_var.set(behavior.get('view_comment_prob', 0.05))
+            self.random_like_var.set(behavior.get('random_like', True))
+            self.like_prob_var.set(behavior.get('like_prob', 0.30))
             
             comment = warmup.get('comment', {})
             self.enable_comment_var.set(comment.get('enable', False))
@@ -165,8 +196,13 @@ class WarmupTab(ttk.Frame):
                     'watch_time_min': self.watch_min_var.get(),
                     'watch_time_max': self.watch_max_var.get(),
                     'random_pause': self.random_pause_var.get(),
+                    'pause_prob': self.pause_prob_var.get(),
                     'random_scroll': self.random_scroll_var.get(),
-                    'view_comment': self.view_comment_var.get()
+                    'scroll_prob': self.scroll_prob_var.get(),
+                    'view_comment': self.view_comment_var.get(),
+                    'view_comment_prob': self.view_comment_prob_var.get(),
+                    'random_like': self.random_like_var.get(),
+                    'like_prob': self.like_prob_var.get()
                 },
                 'comment': {
                     'enable': self.enable_comment_var.get(),
@@ -204,10 +240,10 @@ class WarmupTab(ttk.Frame):
             backend_main.stop_task()
             self.stop_btn.config(state="disabled")
 
-    def update_status(self, video_title, watched_count, total_time, comment_count):
+    def update_status(self, video_title, watched_count, total_time, like_count, comment_count):
         def _update():
             self.current_video_label.config(text=f"当前视频: {video_title}")
-            self.stats_label.config(text=f"已观看: {watched_count} | 累计时长: {total_time} min | 已评论: {comment_count}")
+            self.stats_label.config(text=f"已观看: {watched_count} | 累计时长: {total_time} min | 已点赞: {like_count} | 已评论: {comment_count}")
         self.after(0, _update)
 
     def _run_backend(self):

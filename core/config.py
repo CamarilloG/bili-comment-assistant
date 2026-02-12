@@ -97,6 +97,10 @@ class ConfigValidator:
         if "browser" in config:
             validated["browser"] = config["browser"]
         
+        # Preserve warmup config section (used by warmup mode)
+        if "warmup" in config:
+            validated["warmup"] = config["warmup"]
+        
         ConfigValidator._validate_required_fields(validated)
         
         return validated
