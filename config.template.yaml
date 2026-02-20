@@ -1,0 +1,71 @@
+account:
+  cookie_file: cookies.json
+search:
+  keywords:
+  - 穿越火线
+  max_videos_per_keyword: 20
+  filter:
+    sort: click
+    duration: 0
+    time_range:
+      type: recent
+      value: 7
+  strategy:
+    selection: random
+    strict_title_match: false
+    random_pool_size: 20
+comment:
+  enable_image: true
+  texts:
+  - cf玩家一起玩
+  images:
+  - C:/Users/qsqsq/Downloads/7ab9f394b02cd608c348a77e48e24798.jpg
+behavior:
+  min_delay: 5.0
+  max_delay: 10.0
+  headless: false
+  timeout: 30000
+browser:
+  path: C:/Program Files/Google/Chrome/Application/chrome.exe
+  port: 0
+captcha:
+  max_count: 3
+  quiet_minutes: 5
+  warmup_minutes: 30
+ai:
+  enabled: true
+  base_url: https://api.deepseek.com/v1
+  api_key: YOUR_API_KEY_HERE
+  model: deepseek-chat
+  timeout: 30
+  max_retries: 2
+  comment:
+    enabled: true
+    user_intent: '你是一个 CF 老玩家，建了一个CF开黑聊天群，想要让更多玩家加群一起玩游戏；
+
+      不要用emoji表情。'
+    style: enthusiastic
+    max_length: 100
+  filter:
+    enabled: true
+    criteria: 只选择穿越火线，CF强相关视频内容，跳过明显无关或者关联性较差的，包括其他游戏或者完全游戏无关的内容。
+warmup:
+  basic:
+    duration_minutes: 30
+    max_videos: 50
+  behavior:
+    watch_time_min: 20
+    watch_time_max: 240
+    random_pause: true
+    pause_prob: 0.005
+    random_scroll: true
+    scroll_prob: 0.01
+    view_comment: true
+    view_comment_prob: 0.005
+    random_like: true
+    like_prob: 0.3
+  comment:
+    enable: false
+    probability: 0.1
+    type: template
+  source: recommend

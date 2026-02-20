@@ -67,8 +67,8 @@ captcha_record.json
 debug_*.py
 OPTIMIZATION_SUMMARY.md
 
-# Config files (optional - you might want to keep config.yaml but exclude sensitive data)
-# config.yaml
+# Config files
+config.yaml
 
 # Playwright browsers
 .ms-playwright/
