@@ -45,7 +45,7 @@ class BilibiliSelectors:
         "image_btn_icon": "BDC/image_line/3",
         "send_btn_selector": "#pub > button",
         "footer": "#footer",
-        "captcha": ".geetest_window, .bili-mini-mask"
+        "captcha": ".geetest_widget, .geetest_window, .bili-mini-mask"
     }
 
     @staticmethod

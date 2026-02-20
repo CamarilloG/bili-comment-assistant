@@ -1,3 +1,6 @@
 playwright
 pyyaml
 loguru
+ttkbootstrap
+fastapi
+uvicorn

@@ -92,6 +92,11 @@ class AuthManager:
         try:
             page.goto("https://passport.bilibili.com/login", wait_until="domcontentloaded")
             logger.info("请在打开的浏览器窗口中扫描二维码登录。")
+            try:
+                page.screenshot(path="login_qrcode.png")
+                logger.info("已保存登录截图到 login_qrcode.png")
+            except Exception as e:
+                logger.error(f"截图失败: {e}")
             
             # Loop to check login status
             start_time = time.time()

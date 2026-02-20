@@ -41,3 +41,13 @@ class CaptchaNotifier:
             f"[通知] 今日验证码触发已达上限（{count}/{max_count}），"
             f"任务已终止。建议明天再试或检查账号状态。"
         )
+
+    def notify_captcha_alert(self, source: str, detail: str = ""):
+        """任意流程检测到验证码时立即调用，用于风控/错误提醒（接口留空，后续可接入 HTTP/推送等）
+
+        Args:
+            source: 触发场景，如 "comment" / "warmup"
+            detail: 可选详情，如 BV 号、当前 URL
+        """
+        logger.warning(f"[风控提醒] 检测到验证码 source={source} detail={detail}")
+        # TODO: 在此处接入推送接口（Server酱、Telegram、邮件等）

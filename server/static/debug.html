@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bili Comment Assistant Debugger</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .container { display: flex; gap: 20px; }
+        .screen-container { flex: 2; border: 1px solid #ccc; padding: 10px; }
+        .control-container { flex: 1; border: 1px solid #ccc; padding: 10px; }
+        #screenshot { max-width: 100%; border: 1px solid #ddd; }
+        #status { margin-bottom: 10px; font-weight: bold; }
+        textarea { width: 100%; height: 150px; margin-bottom: 10px; }
+        button { padding: 8px 16px; cursor: pointer; }
+        pre { background: #f4f4f4; padding: 10px; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <h1>Bili Comment Assistant Debugger</h1>
+    <div class="container">
+        <div class="screen-container">
+            <div id="status">Status: Loading...</div>
+            <img id="screenshot" src="/api/screenshot" alt="Browser Screenshot">
+        </div>
+        <div class="control-container">
+            <h3>Execute JavaScript</h3>
+            <textarea id="js-code" placeholder="document.title"></textarea>
+            <button onclick="executeCode()">Run</button>
+            <h3>Result</h3>
+            <pre id="result">Waiting for execution...</pre>
+        </div>
+    </div>
+
+    <script>
+        const screenshotImg = document.getElementById('screenshot');
+        const statusDiv = document.getElementById('status');
+        const resultPre = document.getElementById('result');
+
+        function refreshScreenshot() {
+            // Add timestamp to prevent caching
+            screenshotImg.src = `/api/screenshot?t=${new Date().getTime()}`;
+        }
+
+        async function updateStatus() {
+            try {
+                const response = await fetch('/api/status');
+                const data = await response.json();
+                if (data.status === 'running') {
+                    statusDiv.textContent = `Status: Running | URL: ${data.url} | Title: ${data.title}`;
+                } else {
+                    statusDiv.textContent = `Status: ${data.status}`;
+                }
+            } catch (e) {
+                statusDiv.textContent = 'Status: Error fetching status';
+            }
+        }
+
+        async function executeCode() {
+            const code = document.getElementById('js-code').value;
+            if (!code) return;
+
+            resultPre.textContent = 'Executing...';
+            try {
+                const response = await fetch('/api/exec', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ code: code })
+                });
+                const data = await response.json();
+                resultPre.textContent = JSON.stringify(data, null, 2);
+            } catch (e) {
+                resultPre.textContent = `Error: ${e.message}`;
+            }
+        }
+
+        // Refresh every 1 second
+        setInterval(() => {
+            refreshScreenshot();
+            updateStatus();
+        }, 1000);
+
+        // Initial load
+        updateStatus();
+    </script>
+</body>
+</html>

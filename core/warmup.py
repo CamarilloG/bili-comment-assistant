@@ -1,14 +1,18 @@
 import time
 import random
 import threading
+from typing import Optional
 from loguru import logger
 from playwright.sync_api import Page, BrowserContext
+from core.context import context as global_context
+from core.captcha_check import check_captcha_on_page
 
 class WarmupManager:
-    def __init__(self, context: BrowserContext, config: dict):
+    def __init__(self, context: BrowserContext, config: dict, captcha_notifier: Optional[object] = None):
         self.context = context
         self.config = config
         self.warmup_config = config.get('warmup', {})
+        self.captcha_notifier = captcha_notifier
         self.running = True
         self._stop_event = threading.Event()
         
@@ -41,6 +45,7 @@ class WarmupManager:
         logger.info(f"开始养号任务，预计时长: {duration_minutes} 分钟，目标视频数: {max_videos}")
         
         page = self.context.new_page()
+        global_context.page = page
         
         try:
             is_first_visit = True
@@ -53,6 +58,13 @@ class WarmupManager:
                 else:
                     logger.info("返回 B 站首页...")
                     page.goto("https://www.bilibili.com", wait_until="domcontentloaded", timeout=60000)
+                
+                if check_captcha_on_page(page):
+                    logger.error("[养号] 检测到验证码，退出养号流程")
+                    if self.captcha_notifier:
+                        self.captcha_notifier.notify_captcha_alert("warmup", page.url)
+                    self.running = False
+                    break
                 
                 video_cards = self._wait_for_video_cards(page)
                 
@@ -200,6 +212,12 @@ class WarmupManager:
         """Simulate watching a single video"""
         page.goto(url, wait_until="domcontentloaded")
         if self._interruptible_sleep(3): return
+        if check_captcha_on_page(page):
+            logger.error("[养号] 观看页检测到验证码，退出")
+            if self.captcha_notifier:
+                self.captcha_notifier.notify_captcha_alert("warmup", page.url or url)
+            self.running = False
+            return
         
         watch_min = self.warmup_config.get('behavior', {}).get('watch_time_min', 20)
         watch_max = self.warmup_config.get('behavior', {}).get('watch_time_max', 240)
@@ -231,6 +249,12 @@ class WarmupManager:
                 self.like_count += 1
         
         while self.running and elapsed < watch_duration:
+            if check_captcha_on_page(page):
+                logger.error("[养号] 观看中检测到验证码，退出")
+                if self.captcha_notifier:
+                    self.captcha_notifier.notify_captcha_alert("warmup", page.url or url)
+                self.running = False
+                break
             # Update status periodically
             if status_callback:
                 status_callback(

@@ -3,6 +3,7 @@ from tkinter import filedialog, messagebox, scrolledtext
 import ttkbootstrap as ttk
 from ttkbootstrap.constants import *
 from ttkbootstrap.dialogs import Querybox
+from ttkbootstrap.scrolled import ScrolledFrame
 import threading
 import yaml
 import json
@@ -41,157 +42,158 @@ class CommentTab(ttk.Frame):
         self.paned.pack(fill=BOTH, expand=YES, padx=10, pady=10)
         
         # --- LEFT PANEL: Configuration ---
-        left_frame = ttk.Frame(self.paned)
-        self.paned.add(left_frame, weight=1)
+        left_panel = ttk.Frame(self.paned)
+        self.paned.add(left_panel, weight=2)
+
+        # 1. Action bar (fixed at top, same row: start / stop / status)
+        action_bar = ttk.Frame(left_panel)
+        action_bar.pack(side=TOP, fill=X, pady=(0, 10))
+        self.start_btn = ttk.Button(action_bar, text="保存并开始", command=self.start_task, bootstyle="success", width=14)
+        self.start_btn.pack(side=LEFT, padx=(0, 8))
+        self.stop_btn = ttk.Button(action_bar, text="停止", command=self.stop_task, bootstyle="danger", state="disabled", width=10)
+        self.stop_btn.pack(side=LEFT, padx=(0, 12))
+        ttk.Label(action_bar, textvariable=self.progress_var, bootstyle="info", font=("", 10)).pack(side=LEFT)
+
+        # 2. Scrollable Configuration Area
+        config_scroll = ScrolledFrame(left_panel, autohide=True)
+        config_scroll.pack(side=TOP, fill=BOTH, expand=YES)
         
+        # Use config_scroll.container as the parent for config groups but we need to reference config_scroll directly for packing
+        # Actually in ttkbootstrap ScrolledFrame, we pack items into it directly and it handles the container? 
+        # No, checking docs: ScrolledFrame is a frame, we pack into it. 
+        # Let's verify behavior. Typically we pack into `scroll_frame` itself or a property.
+        # Looking at common usage: `sf = ScrolledFrame(...)`, `sub_widget.pack(in_=sf)`.
+        # However, typically ScrolledFrame acts as the parent widget.
+        
+        config_content = config_scroll
+
         # 1. Basic Config
-        basic_group = ttk.Labelframe(left_frame, text="基础配置", padding=5)
-        basic_group.pack(fill=X, pady=2)
+        basic_group = ttk.Labelframe(config_content, text="基础配置", padding=12)
+        basic_group.pack(fill=X, pady=8, padx=2)
         
         ttk.Label(basic_group, text="搜索关键词 (逗号分隔):").pack(anchor=W)
         self.keywords_entry = ttk.Entry(basic_group)
-        self.keywords_entry.pack(fill=X, pady=2)
+        self.keywords_entry.pack(fill=X, pady=3)
         
         ttk.Label(basic_group, text="评论内容 (固定单条):").pack(anchor=W)
-        self.comment_text = ttk.Text(basic_group, height=3)
-        self.comment_text.pack(fill=X, pady=2)
+        self.comment_text = ttk.Text(basic_group, height=5)
+        self.comment_text.pack(fill=X, pady=3)
         
-        # Image Config
         img_frame = ttk.Frame(basic_group)
-        img_frame.pack(fill=X, pady=2)
-        
+        img_frame.pack(fill=X, pady=3)
         ttk.Checkbutton(img_frame, text="启用图片", variable=self.enable_img_var, bootstyle="round-toggle").pack(side=LEFT)
-        
-        ttk.Label(img_frame, text="路径:").pack(side=LEFT, padx=(10, 0))
+        ttk.Label(img_frame, text="路径:").pack(side=LEFT, padx=(10, 5))
         self.img_entry = ttk.Entry(img_frame, textvariable=self.img_path_var)
         self.img_entry.pack(side=LEFT, fill=X, expand=YES, padx=5)
-        ttk.Button(img_frame, text="...", width=3, command=self.select_image).pack(side=RIGHT)
+        ttk.Button(img_frame, text="...", width=4, command=self.select_image).pack(side=RIGHT)
 
         # 2. Parameters
-        param_group = ttk.Labelframe(left_frame, text="运行参数", padding=5)
-        param_group.pack(fill=X, pady=2)
+        param_group = ttk.Labelframe(config_content, text="运行参数", padding=12)
+        param_group.pack(fill=X, pady=8, padx=2)
         
-        r1 = ttk.Frame(param_group)
-        r1.pack(fill=X, pady=2)
-        ttk.Label(r1, text="间隔(s):").pack(side=LEFT)
-        self.min_delay = ttk.Entry(r1, width=4)
-        self.min_delay.pack(side=LEFT, padx=2)
-        ttk.Label(r1, text="-").pack(side=LEFT)
-        self.max_delay = ttk.Entry(r1, width=4)
-        self.max_delay.pack(side=LEFT, padx=2)
+        # Use Grid for better alignment
+        param_group.columnconfigure(1, weight=1)
+        param_group.columnconfigure(3, weight=1)
         
-        ttk.Label(r1, text="超时(ms):").pack(side=LEFT, padx=(10, 2))
-        self.timeout_entry = ttk.Entry(r1, width=6)
-        self.timeout_entry.pack(side=LEFT)
+        ttk.Label(param_group, text="间隔(s):").grid(row=0, column=0, sticky=W)
         
-        r2 = ttk.Frame(param_group)
-        r2.pack(fill=X, pady=2)
-        ttk.Label(r2, text="最大评论数:").pack(side=LEFT)
-        self.max_videos = ttk.Entry(r2, width=6)
-        self.max_videos.pack(side=LEFT, padx=5)
+        delay_frame = ttk.Frame(param_group)
+        delay_frame.grid(row=0, column=1, sticky=EW, padx=5)
+        self.min_delay = ttk.Entry(delay_frame, width=5)
+        self.min_delay.pack(side=LEFT, fill=X, expand=YES)
+        ttk.Label(delay_frame, text="-").pack(side=LEFT, padx=2)
+        self.max_delay = ttk.Entry(delay_frame, width=5)
+        self.max_delay.pack(side=LEFT, fill=X, expand=YES)
         
-        ttk.Checkbutton(r2, text="显示窗口", variable=self.headless_var, onvalue=False, offvalue=True).pack(side=LEFT, padx=10)
+        ttk.Label(param_group, text="超时(ms):").grid(row=0, column=2, sticky=W, padx=(10, 0))
+        self.timeout_entry = ttk.Entry(param_group, width=8)
+        self.timeout_entry.grid(row=0, column=3, sticky=EW, padx=5)
+        
+        ttk.Label(param_group, text="最大评论数:").grid(row=1, column=0, sticky=W, pady=5)
+        self.max_videos = ttk.Entry(param_group, width=8)
+        self.max_videos.grid(row=1, column=1, sticky=EW, padx=5, pady=5)
+        
+        ttk.Checkbutton(param_group, text="显示窗口", variable=self.headless_var, onvalue=False, offvalue=True).grid(row=1, column=2, columnspan=2, sticky=W, padx=10)
 
         # 3. Search Filters
-        filter_group = ttk.Labelframe(left_frame, text="综合设置", padding=5)
-        filter_group.pack(fill=X, pady=2)
+        filter_group = ttk.Labelframe(config_content, text="综合设置", padding=12)
+        filter_group.pack(fill=X, pady=8, padx=2)
         
-        fr1 = ttk.Frame(filter_group)
-        fr1.pack(fill=X, pady=2)
-        
+        filter_group.columnconfigure(1, weight=1)
+        filter_group.columnconfigure(3, weight=1)
+
+        ttk.Label(filter_group, text="排序:").grid(row=0, column=0, sticky=W)
         self.sort_map = {"综合排序": "totalrank", "最新发布": "pubdate", "最多播放": "click", "最多弹幕": "dm", "最多收藏": "stow"}
         self.sort_map_rev = {v: k for k, v in self.sort_map.items()}
-        
-        self.sort_cb = ttk.Combobox(fr1, values=list(self.sort_map.keys()), state="readonly", width=9)
-        self.sort_cb.pack(side=LEFT, padx=2)
+        self.sort_cb = ttk.Combobox(filter_group, values=list(self.sort_map.keys()), state="readonly")
+        self.sort_cb.grid(row=0, column=1, sticky=EW, padx=5, pady=2)
         self.sort_cb.current(0)
         
+        ttk.Label(filter_group, text="时长:").grid(row=0, column=2, sticky=W, padx=(10, 0))
         self.dur_map = {"全部时长": 0, "10分钟以下": 1, "10-30分钟": 2, "30-60分钟": 3, "60分钟以上": 4}
         self.dur_map_rev = {v: k for k, v in self.dur_map.items()}
-        self.dur_cb = ttk.Combobox(fr1, values=list(self.dur_map.keys()), state="readonly", width=9)
-        self.dur_cb.pack(side=LEFT, padx=2)
+        self.dur_cb = ttk.Combobox(filter_group, values=list(self.dur_map.keys()), state="readonly")
+        self.dur_cb.grid(row=0, column=3, sticky=EW, padx=5, pady=2)
         self.dur_cb.current(0)
 
-        fr2 = ttk.Frame(filter_group)
-        fr2.pack(fill=X, pady=2)
-        ttk.Label(fr2, text="策略:").pack(side=LEFT)
+        ttk.Label(filter_group, text="策略:").grid(row=1, column=0, sticky=W)
         self.strat_map = {"顺序选择": "order", "随机选择": "random"}
         self.strat_map_rev = {v: k for k, v in self.strat_map.items()}
-        self.strat_cb = ttk.Combobox(fr2, values=list(self.strat_map.keys()), state="readonly", width=10)
-        self.strat_cb.pack(side=LEFT, padx=5)
+        self.strat_cb = ttk.Combobox(filter_group, values=list(self.strat_map.keys()), state="readonly")
+        self.strat_cb.grid(row=1, column=1, sticky=EW, padx=5, pady=2)
         self.strat_cb.current(0)
 
-        fr3 = ttk.Frame(filter_group)
-        fr3.pack(fill=X, pady=2)
-        ttk.Checkbutton(fr3, text="严格匹配模式 (标题包含关键词)", variable=self.strict_match_var, onvalue=True, offvalue=False).pack(side=LEFT)
+        ttk.Checkbutton(filter_group, text="严格匹配 (标题含关键词)", variable=self.strict_match_var, onvalue=True, offvalue=False).grid(row=1, column=2, columnspan=2, sticky=W, padx=10)
         
-        fr4 = ttk.Frame(filter_group)
-        fr4.pack(fill=X, pady=2)
-        ttk.Label(fr4, text="时间限制:").pack(side=LEFT)
-        
-        self.time_filter_cb = ttk.Combobox(fr4, textvariable=self.time_filter_var, values=["不限制", "近几天", "指定日期范围"], state="readonly", width=12)
-        self.time_filter_cb.pack(side=LEFT, padx=5)
+        ttk.Label(filter_group, text="时间限制:").grid(row=2, column=0, sticky=W, pady=2)
+        self.time_filter_cb = ttk.Combobox(filter_group, textvariable=self.time_filter_var, values=["不限制", "近几天", "指定日期范围"], state="readonly")
+        self.time_filter_cb.grid(row=2, column=1, sticky=EW, padx=5, pady=2)
         self.time_filter_cb.bind("<<ComboboxSelected>>", self.on_time_filter_change)
         
         self.date_input_frame = ttk.Frame(filter_group)
-        self.date_input_frame.pack(fill=X, pady=2)
+        self.date_input_frame.grid(row=2, column=2, columnspan=2, sticky=EW, padx=5)
         
         self.recent_days_frame = ttk.Frame(self.date_input_frame)
         ttk.Label(self.recent_days_frame, text="最近").pack(side=LEFT)
         self.recent_days_entry = ttk.Entry(self.recent_days_frame, width=5)
         self.recent_days_entry.insert(0, "1")
-        self.recent_days_entry.pack(side=LEFT, padx=2)
+        self.recent_days_entry.pack(side=LEFT, padx=2, fill=X, expand=YES)
         ttk.Label(self.recent_days_frame, text="天").pack(side=LEFT)
         
         self.date_range_frame = ttk.Frame(self.date_input_frame)
-        ttk.Label(self.date_range_frame, text="从").pack(side=LEFT)
-        self.date_start_entry = ttk.Entry(self.date_range_frame, width=10)
-        self.date_start_entry.pack(side=LEFT, padx=2)
+        self.date_start_entry = ttk.Entry(self.date_range_frame, width=9)
+        self.date_start_entry.pack(side=LEFT, padx=2, fill=X, expand=YES)
         ttk.Button(self.date_range_frame, text="📅", width=2, command=self.pick_start_date, bootstyle="info-outline").pack(side=LEFT)
-        ttk.Label(self.date_range_frame, text="到").pack(side=LEFT, padx=(5, 0))
-        self.date_end_entry = ttk.Entry(self.date_range_frame, width=10)
-        self.date_end_entry.pack(side=LEFT, padx=2)
+        ttk.Label(self.date_range_frame, text="-").pack(side=LEFT, padx=2)
+        self.date_end_entry = ttk.Entry(self.date_range_frame, width=9)
+        self.date_end_entry.pack(side=LEFT, padx=2, fill=X, expand=YES)
         ttk.Button(self.date_range_frame, text="📅", width=2, command=self.pick_end_date, bootstyle="info-outline").pack(side=LEFT)
         
-        # 4. Browser Config
-        browser_group = ttk.Labelframe(left_frame, text="浏览器配置 (高级)", padding=5)
-        browser_group.pack(fill=X, pady=2)
-        
-        br1 = ttk.Frame(browser_group)
-        br1.pack(fill=X, pady=2)
-        ttk.Label(br1, text="Exe路径:").pack(side=LEFT)
-        ttk.Entry(br1, textvariable=self.browser_path_var).pack(side=LEFT, fill=X, expand=YES, padx=5)
-        ttk.Button(br1, text="...", width=3, command=self.select_browser).pack(side=RIGHT)
-        
-        br2 = ttk.Frame(browser_group)
-        br2.pack(fill=X, pady=2)
-        ttk.Label(br2, text="调试端口:").pack(side=LEFT)
-        ttk.Entry(br2, textvariable=self.browser_port_var, width=10).pack(side=LEFT, padx=5)
-        ttk.Label(br2, text="(0为不使用)").pack(side=LEFT)
-
-        # 5. Account
-        auth_group = ttk.Labelframe(left_frame, text="账号状态", padding=5)
-        auth_group.pack(fill=X, pady=2)
-        self.status_label = ttk.Label(auth_group, text="未检测", bootstyle="secondary")
-        self.status_label.pack(side=LEFT, padx=10)
-        ttk.Button(auth_group, text="检测", command=self.check_login_status, bootstyle="warning-outline", width=6).pack(side=LEFT, padx=2)
-        ttk.Button(auth_group, text="扫码", command=self.qr_login, bootstyle="primary", width=6).pack(side=LEFT, padx=2)
-
-        # 6. Control
-        ctrl_frame = ttk.Frame(left_frame)
-        ctrl_frame.pack(fill=X, pady=10)
-        self.start_btn = ttk.Button(ctrl_frame, text="保存并开始", command=self.start_task, bootstyle="success")
-        self.start_btn.pack(fill=X, pady=2)
-        self.stop_btn = ttk.Button(ctrl_frame, text="停止", command=self.stop_task, bootstyle="danger", state="disabled")
-        self.stop_btn.pack(fill=X, pady=2)
-        ttk.Label(ctrl_frame, textvariable=self.progress_var, bootstyle="info").pack(fill=X, pady=5)
+        # 4. Browser & Account (one card: browser path row, then port + debug + account row)
+        browser_group = ttk.Labelframe(config_content, text="浏览器与账号", padding=12)
+        browser_group.pack(fill=X, pady=8, padx=2)
+        browser_group.columnconfigure(1, weight=1)
+        ttk.Label(browser_group, text="Exe路径:").grid(row=0, column=0, sticky=W, pady=2)
+        br_path_frame = ttk.Frame(browser_group)
+        br_path_frame.grid(row=0, column=1, columnspan=3, sticky=EW, padx=5, pady=2)
+        ttk.Entry(br_path_frame, textvariable=self.browser_path_var).pack(side=LEFT, fill=X, expand=YES)
+        ttk.Button(br_path_frame, text="...", width=4, command=self.select_browser).pack(side=RIGHT, padx=(5, 0))
+        ttk.Label(browser_group, text="调试端口:").grid(row=1, column=0, sticky=W, pady=3)
+        ttk.Entry(browser_group, textvariable=self.browser_port_var, width=10).grid(row=1, column=1, sticky=W, padx=5, pady=3)
+        ttk.Button(browser_group, text="开启调试模式", command=self.toggle_debug_server, bootstyle="info-outline", width=12).grid(row=1, column=2, sticky=W, padx=5, pady=3)
+        account_row = ttk.Frame(browser_group)
+        account_row.grid(row=2, column=0, columnspan=4, sticky=W, pady=6)
+        self.status_label = ttk.Label(account_row, text="未检测", bootstyle="secondary")
+        self.status_label.pack(side=LEFT, padx=(0, 8))
+        ttk.Button(account_row, text="检测", command=self.check_login_status, bootstyle="warning-outline", width=8).pack(side=LEFT, padx=2)
+        ttk.Button(account_row, text="扫码", command=self.qr_login, bootstyle="primary-outline", width=8).pack(side=LEFT, padx=2)
 
         # --- RIGHT PANEL: Results & Logs ---
         right_frame = ttk.Frame(self.paned)
         self.paned.add(right_frame, weight=3)
         
-        list_frame = ttk.Labelframe(right_frame, text="视频处理列表", padding=5)
-        list_frame.pack(fill=BOTH, expand=YES, pady=2)
+        list_frame = ttk.Labelframe(right_frame, text="视频处理列表", padding=12)
+        list_frame.pack(fill=BOTH, expand=YES, pady=8)
         
         cols = ("bv", "title", "author", "date", "views", "status")
         self.tree = ttk.Treeview(list_frame, columns=cols, show="headings", selectmode="browse", bootstyle="info")
@@ -206,12 +208,13 @@ class CommentTab(ttk.Frame):
         self.tree.heading("views", text="播放")
         self.tree.heading("status", text="状态")
         
-        self.tree.column("bv", width=100)
-        self.tree.column("title", width=200)
-        self.tree.column("author", width=100)
-        self.tree.column("date", width=80)
-        self.tree.column("views", width=60)
-        self.tree.column("status", width=60)
+        # Adaptive column width
+        self.tree.column("bv", width=100, minwidth=80)
+        self.tree.column("title", width=250, minwidth=150)
+        self.tree.column("author", width=120, minwidth=80)
+        self.tree.column("date", width=100, minwidth=80)
+        self.tree.column("views", width=80, minwidth=60)
+        self.tree.column("status", width=80, minwidth=60)
         
         scroll = ttk.Scrollbar(list_frame, orient=VERTICAL, command=self.tree.yview)
         self.tree.configure(yscrollcommand=scroll.set)
@@ -223,8 +226,8 @@ class CommentTab(ttk.Frame):
         self.tree_menu.add_command(label="复制 标题", command=self.copy_title)
         self.tree.bind("<Button-3>", self.show_context_menu)
 
-        log_frame = ttk.Labelframe(right_frame, text="运行日志", padding=5)
-        log_frame.pack(fill=BOTH, expand=YES, pady=2)
+        log_frame = ttk.Labelframe(right_frame, text="运行日志", padding=12)
+        log_frame.pack(fill=BOTH, expand=YES, pady=8)
         self.log_area = scrolledtext.ScrolledText(log_frame, height=10, state='normal')
         self.log_area.pack(fill=BOTH, expand=YES)
 
@@ -477,16 +480,31 @@ class CommentTab(ttk.Frame):
             self.after(0, lambda: self.stop_btn.config(state="disabled"))
             logger.info("任务结束。")
 
+    def toggle_debug_server(self):
+        """Start debug API server on demand; show message if already running."""
+        if backend_main.is_api_server_started():
+            messagebox.showinfo("调试模式", "调试服务已在运行：http://localhost:8000")
+            return
+        backend_main.start_api_server()
+        messagebox.showinfo("调试模式", "调试服务已启动：http://localhost:8000")
+
     def check_login_status(self):
         threading.Thread(target=self._check_login_thread, daemon=True).start()
 
     def _check_login_thread(self):
         self.after(0, lambda: self.status_label.config(text="检测中...", bootstyle="secondary"))
         try:
+            # Load config to get browser args
+            with open(self.config_file, 'r', encoding='utf-8') as f:
+                conf = yaml.safe_load(f) or {}
+            
+            launch_args = backend_main.get_browser_launch_args(conf)
+            if not launch_args:
+                self.after(0, lambda: self.status_label.config(text="配置错误", bootstyle="danger"))
+                return
+
             with sync_playwright() as p:
-                launch_args = {"headless": False}
-                exe_path = self.browser_path_var.get()
-                if exe_path and os.path.exists(exe_path): launch_args["executable_path"] = os.path.normpath(exe_path)
+                # launch_args already contains executable_path and args
                 browser = p.chromium.launch(**launch_args)
                 context = browser.new_context()
                 auth = AuthManager(context, "cookies.json")
@@ -510,10 +528,16 @@ class CommentTab(ttk.Frame):
 
     def _qr_login_thread(self):
         try:
+            # Load config to get browser args
+            with open(self.config_file, 'r', encoding='utf-8') as f:
+                conf = yaml.safe_load(f) or {}
+            
+            launch_args = backend_main.get_browser_launch_args(conf, force_headed=True)
+            if not launch_args:
+                messagebox.showerror("错误", "浏览器配置错误")
+                return
+
             with sync_playwright() as p:
-                launch_args = {"headless": False}
-                exe_path = self.browser_path_var.get()
-                if exe_path and os.path.exists(exe_path): launch_args["executable_path"] = os.path.normpath(exe_path)
                 browser = p.chromium.launch(**launch_args)
                 context = browser.new_context()
                 auth = AuthManager(context, "cookies.json")

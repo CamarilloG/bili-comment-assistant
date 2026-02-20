@@ -9,17 +9,42 @@ import tkinter as tk
 from gui_tabs.comment_tab import CommentTab
 from gui_tabs.warmup_tab import WarmupTab
 
-# Redirect logs to GUI
+# Redirect logs to GUI (throttled to reduce UI lag)
 class TextHandler:
-    def __init__(self, text_widgets):
+    _MAX_LINES = 1500
+    _TRIM_LINES = 500
+    _THROTTLE_MS = 100
+
+    def __init__(self, text_widgets, root):
         self.text_widgets = text_widgets if isinstance(text_widgets, list) else [text_widgets]
+        self.root = root
+        self._queue = []
+        self._after_id = None
 
     def write(self, string):
+        if not string:
+            return
+        self._queue.append(string)
+        if self._after_id is None:
+            self._after_id = self.root.after(self._THROTTLE_MS, self._flush_log)
+
+    def _flush_log(self):
+        self._after_id = None
+        if not self._queue:
+            return
+        text = "".join(self._queue)
+        self._queue.clear()
+        self.root.after(0, self._append_text, text)
+
+    def _append_text(self, text):
         for widget in self.text_widgets:
             try:
-                widget.insert(tk.END, string)
+                widget.insert(tk.END, text)
                 widget.see(tk.END)
-            except:
+                line_count = int(widget.index("end-1c").split(".")[0])
+                if line_count > self._MAX_LINES:
+                    widget.delete("1.0", f"{self._TRIM_LINES}.0")
+            except Exception:
                 pass
 
     def flush(self):
@@ -29,22 +54,32 @@ class BiliBotGUI:
     def __init__(self, root):
         self.root = root
         self.root.title("Bilibili 自动评论助手 V1.1")
-        self.root.geometry("1200x850")
+        self.center_window(1280, 820)
         self.config_file = "config.yaml"
-        
+
         self.setup_ui()
         
         # Log redirection to both tabs
         logger.remove()
         logger.add(
-            TextHandler([self.comment_tab.log_area, self.warmup_tab.log_area]), 
+            TextHandler([self.comment_tab.log_area, self.warmup_tab.log_area], self.root), 
             format="{time:HH:mm:ss} | {message}"
         )
+        
+        # Handle window close event
+        self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
+
+    def center_window(self, width, height):
+        screen_width = self.root.winfo_screenwidth()
+        screen_height = self.root.winfo_screenheight()
+        x = (screen_width - width) // 2
+        y = (screen_height - height) // 2
+        self.root.geometry(f"{width}x{height}+{x}+{y}")
 
     def setup_ui(self):
         # Create Notebook for Tabs
         self.notebook = ttk.Notebook(self.root, bootstyle="primary")
-        self.notebook.pack(fill=BOTH, expand=YES, padx=5, pady=5)
+        self.notebook.pack(fill=BOTH, expand=YES, padx=8, pady=8)
         
         # 1. Auto Comment Tab
         self.comment_tab = CommentTab(self.notebook, self.config_file)
@@ -61,7 +96,19 @@ class BiliBotGUI:
         # Optional: Check if a task is running in the other tab and warn user
         pass
 
+    def on_closing(self):
+        if hasattr(self.comment_tab, 'running') and self.comment_tab.running:
+            self.comment_tab.stop_task()
+        if hasattr(self.warmup_tab, 'running') and self.warmup_tab.running:
+            self.warmup_tab.stop_task()
+        self.root.destroy()
+
 if __name__ == "__main__":
-    app = ttk.Window(themename="flatly")
-    gui = BiliBotGUI(app)
-    app.mainloop()
+    try:
+        app = ttk.Window(themename="cosmo", size=(1280, 820))
+        gui = BiliBotGUI(app)
+        app.mainloop()
+    except Exception as e:
+        print(f"GUI启动失败: {e}")
+        import traceback
+        traceback.print_exc()

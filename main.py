@@ -16,11 +16,30 @@ from core.captcha_tracker import CaptchaTracker
 from core.notifier import CaptchaNotifier
 from utils.logger import get_logger
 from utils.date_parser import parse_bilibili_date
+from server.api import start_server
+from core.context import context as global_context
 
 logger = get_logger()
 
 _stop_event = threading.Event()
 _current_manager = None
+_server_started = False
+
+def start_api_server():
+    global _server_started
+    if not _server_started:
+        try:
+            server_thread = threading.Thread(target=start_server, daemon=True)
+            server_thread.start()
+            _server_started = True
+            logger.info("API Server started at http://localhost:8000")
+        except Exception as e:
+            logger.error(f"Failed to start API server: {e}")
+
+
+def is_api_server_started():
+    """Whether the debug API server has been started (e.g. by user clicking 开启调试模式)."""
+    return _server_started
 
 def stop_task():
     global _current_manager
@@ -70,7 +89,9 @@ def get_browser_launch_args(config, force_headed=False):
             "--disable-infobars",
             "--window-size=1280,720",
             "--disable-blink-features=AutomationControlled",
-            "--mute-audio"
+            "--mute-audio",
+            "--disable-gpu",
+            "--disable-dev-shm-usage"
         ]
     }
     
@@ -79,6 +100,14 @@ def get_browser_launch_args(config, force_headed=False):
 
     if executable_path and os.path.exists(executable_path):
         launch_args["executable_path"] = executable_path
+        # 指定了外部浏览器路径时，通常不应添加 --no-sandbox，这可能导致 EACCES 错误
+        # 且外部浏览器可能已有自己的沙箱策略
+        # if "--no-sandbox" in launch_args["args"]:
+        #      launch_args["args"].remove("--no-sandbox")
+        # 外部浏览器路径通常意味着用户想要看到界面，或者配置了特定的调试环境
+        # 但如果 headless 明确设为 True，我们应该尝试尊重它（取决于浏览器支持）
+        if headless:
+             logger.info("使用外部浏览器，尝试以无头模式运行...")
     elif getattr(sys, 'frozen', False):
         logger.error("在打包环境中运行，必须在配置中指定浏览器路径！")
         return None
@@ -89,8 +118,9 @@ def get_browser_launch_args(config, force_headed=False):
     return launch_args
 
 def main(video_callback=None, status_callback=None):
+    global _current_manager
     reset_stop_flag()
-    
+
     try:
         config = ConfigValidator.load_config()
     except Exception as e:
@@ -122,6 +152,9 @@ def main(video_callback=None, status_callback=None):
         search_page = context.new_page()
         comment_page = context.new_page()
         
+        # Register page for debugging
+        global_context.page = comment_page
+        
         search_mgr = SearchManager(search_page)
         comment_mgr = CommentManager(comment_page)
         history_mgr = HistoryManager()
@@ -141,7 +174,8 @@ def main(video_callback=None, status_callback=None):
         target_count = config["search"]["max_videos_per_keyword"]
         total_success = 0
         captcha_terminated = False
-        
+        warmup_mgr = None  # lazy-loaded for captcha cooldown and interval warmup
+
         for keyword in keywords:
             if _stop_event.is_set() or captcha_terminated: break
             if total_success >= target_count: break
@@ -205,6 +239,7 @@ def main(video_callback=None, status_callback=None):
                         
                         # ===== 验证码冷却流程 =====
                         if result == "captcha":
+                            captcha_notifier.notify_captcha_alert("comment", video_info.get("bv") or video_info.get("url", ""))
                             log_comment_result(video_info, "验证码拦截", text)
                             if status_callback: status_callback(video_info['bv'], "验证码拦截")
                             
@@ -234,10 +269,14 @@ def main(video_callback=None, status_callback=None):
                             logger.info(f"[风控冷却] 静默结束，进入养号模式 {cooldown_minutes} 分钟...")
                             if status_callback: status_callback(video_info['bv'], f"养号冷却{cooldown_minutes}分钟")
                             try:
-                                warmup_mgr = WarmupManager(context, config)
+                                if warmup_mgr is None:
+                                    warmup_mgr = WarmupManager(context, config, captcha_notifier)
+                                _current_manager = warmup_mgr
                                 warmup_mgr.run(duration_override=cooldown_minutes)
                             except Exception as e:
                                 logger.error(f"冷却养号过程出错: {e}")
+                            finally:
+                                _current_manager = None
                             
                             # 7. 增大后续评论间隔
                             delay_multiplier *= 1.5
@@ -258,10 +297,26 @@ def main(video_callback=None, status_callback=None):
                         base_min = config["behavior"].get("min_delay", 5)
                         base_max = config["behavior"].get("max_delay", 15)
                         delay = random.uniform(base_min * delay_multiplier, base_max * delay_multiplier)
-                        logger.info(f"评论间隔延迟: 等待 {delay:.1f} 秒后继续下一个视频...{' (间隔已因风控增大)' if delay_multiplier > 1.0 else ''}")
-                        if _stop_event.wait(delay):
-                            logger.info("延迟期间收到停止信号，终止任务。")
-                            break
+                        if delay >= 180:
+                            logger.info(f"评论间隔 {delay:.1f} 秒 ≥ 3 分钟，进入养号模式填充间隔")
+                            if status_callback: status_callback(video_info['bv'], "养号填充间隔")
+                            try:
+                                if warmup_mgr is None:
+                                    warmup_mgr = WarmupManager(context, config, captcha_notifier)
+                                _current_manager = warmup_mgr
+                                warmup_mgr.run(duration_override=delay / 60)
+                            except Exception as e:
+                                logger.error(f"间隔养号出错: {e}")
+                            finally:
+                                _current_manager = None
+                            if _stop_event.is_set():
+                                logger.info("养号期间收到停止信号，终止任务。")
+                                break
+                        else:
+                            logger.info(f"评论间隔延迟: 等待 {delay:.1f} 秒后继续下一个视频...{' (间隔已因风控增大)' if delay_multiplier > 1.0 else ''}")
+                            if _stop_event.wait(delay):
+                                logger.info("延迟期间收到停止信号，终止任务。")
+                                break
                 
                 if total_success >= target_count or captcha_terminated or not search_mgr.go_to_next_page(): break
             
@@ -274,7 +329,7 @@ def main(video_callback=None, status_callback=None):
 def run_warmup(status_callback=None):
     global _current_manager
     reset_stop_flag()
-    
+
     try:
         config = ConfigValidator.load_config()
     except Exception as e:
@@ -305,7 +360,7 @@ def run_warmup(status_callback=None):
             browser.close()
             return
 
-        _current_manager = WarmupManager(context, config)
+        _current_manager = WarmupManager(context, config, CaptchaNotifier())
         _current_manager.run(status_callback=status_callback)
         
         browser.close()
