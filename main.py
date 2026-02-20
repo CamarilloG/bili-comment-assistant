@@ -12,6 +12,7 @@ from core.comment import CommentManager
 from core.history import HistoryManager
 from core.config import ConfigValidator
 from core.warmup import WarmupManager
+from core.ai_manager import AIManager
 from core.captcha_tracker import CaptchaTracker
 from core.notifier import CaptchaNotifier
 from utils.logger import get_logger
@@ -53,14 +54,13 @@ def reset_stop_flag():
     _stop_event.clear()
     _current_manager = None
 
-def log_comment_result(video_info, status, comment_text):
-    """Log comment result to CSV"""
+def log_comment_result(video_info, status, comment_text, source="Template"):
     file_exists = os.path.isfile('comment_log.csv')
     try:
         with open('comment_log.csv', 'a', newline='', encoding='utf-8-sig') as f:
             writer = csv.writer(f)
             if not file_exists:
-                writer.writerow(['Time', 'BV', 'Title', 'Author', 'Status', 'Comment'])
+                writer.writerow(['Time', 'BV', 'Title', 'Author', 'Status', 'Comment', 'Source'])
             
             writer.writerow([
                 datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -68,10 +68,46 @@ def log_comment_result(video_info, status, comment_text):
                 video_info.get('title', ''),
                 video_info.get('author', ''),
                 status,
-                comment_text
+                comment_text,
+                source
             ])
     except Exception as e:
         logger.error(f"Failed to write to log file: {e}")
+
+def _check_and_fix_runasadmin(executable_path):
+    if sys.platform != "win32":
+        return
+    try:
+        import winreg
+        reg_path = r"Software\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Layers"
+        norm_path = os.path.normpath(executable_path)
+        try:
+            key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, reg_path, 0, winreg.KEY_READ | winreg.KEY_WRITE)
+        except OSError:
+            return
+        try:
+            value, _ = winreg.QueryValueEx(key, norm_path)
+        except FileNotFoundError:
+            winreg.CloseKey(key)
+            return
+        if "RUNASADMIN" not in value.upper():
+            winreg.CloseKey(key)
+            return
+        parts = [p.strip() for p in value.split() if p.strip().upper() not in ("~", "RUNASADMIN")]
+        if parts:
+            new_value = " ".join(parts)
+            winreg.SetValueEx(key, norm_path, 0, winreg.REG_SZ, new_value)
+            logger.warning(f"已从兼容性设置中移除 RUNASADMIN 标志（保留其他标志: {new_value}）")
+        else:
+            try:
+                winreg.DeleteValue(key, norm_path)
+            except OSError:
+                winreg.SetValueEx(key, norm_path, 0, winreg.REG_SZ, "")
+            logger.warning("已移除浏览器的「以管理员身份运行」兼容性设置，否则 Playwright 无法启动该浏览器")
+        winreg.CloseKey(key)
+    except Exception as e:
+        logger.warning(f"检查/修复 RUNASADMIN 兼容性标志时出错: {e}，如果浏览器启动失败，请手动取消 chrome.exe 属性中的「以管理员身份运行」")
+
 
 def get_browser_launch_args(config, force_headed=False):
     headless = config["behavior"].get("headless", False)
@@ -85,7 +121,6 @@ def get_browser_launch_args(config, force_headed=False):
     launch_args = {
         "headless": headless,
         "args": [
-            "--no-sandbox",
             "--disable-infobars",
             "--window-size=1280,720",
             "--disable-blink-features=AutomationControlled",
@@ -99,13 +134,12 @@ def get_browser_launch_args(config, force_headed=False):
         executable_path = os.path.normpath(executable_path)
 
     if executable_path and os.path.exists(executable_path):
+        _check_and_fix_runasadmin(executable_path)
         launch_args["executable_path"] = executable_path
-        # 指定了外部浏览器路径时，通常不应添加 --no-sandbox，这可能导致 EACCES 错误
-        # 且外部浏览器可能已有自己的沙箱策略
-        # if "--no-sandbox" in launch_args["args"]:
-        #      launch_args["args"].remove("--no-sandbox")
-        # 外部浏览器路径通常意味着用户想要看到界面，或者配置了特定的调试环境
-        # 但如果 headless 明确设为 True，我们应该尝试尊重它（取决于浏览器支持）
+        launch_args["ignore_default_args"] = ["--no-sandbox"]
+        
+        logger.info(f"将使用指定路径拉起浏览器: {executable_path}")
+        
         if headless:
              logger.info("使用外部浏览器，尝试以无头模式运行...")
     elif getattr(sys, 'frozen', False):
@@ -160,6 +194,7 @@ def main(video_callback=None, status_callback=None):
         history_mgr = HistoryManager()
         captcha_tracker = CaptchaTracker()
         captcha_notifier = CaptchaNotifier()
+        ai_manager = AIManager(config)
         
         # 验证码冷却相关配置
         captcha_config = config.get("captcha", {})
@@ -230,7 +265,23 @@ def main(video_callback=None, status_callback=None):
                         if video_callback: video_callback(video_info)
                         if status_callback: status_callback(video_info['bv'], "处理中...")
                         
-                        text = random.choice(config["comment"]["texts"])
+                        if ai_manager.is_filter_enabled():
+                            keep, reason = ai_manager.check_video_relevance(video_info)
+                            if not keep:
+                                logger.info(f"[AI筛选] 跳过视频: {video_info['title']} | 原因: {reason}")
+                                if status_callback: status_callback(video_info['bv'], f"AI跳过: {reason}")
+                                continue
+                        
+                        comment_source = "Template"
+                        text = None
+                        if ai_manager.is_comment_enabled():
+                            text = ai_manager.generate_comment(video_info)
+                            if text:
+                                comment_source = "AI"
+                            else:
+                                logger.warning("AI 评论生成失败，降级使用模板")
+                        if not text:
+                            text = random.choice(config["comment"]["texts"])
                         image_path = None
                         if config["comment"].get("enable_image", False) and config["comment"].get("images"):
                             image_path = random.choice(config["comment"]["images"])
@@ -240,7 +291,7 @@ def main(video_callback=None, status_callback=None):
                         # ===== 验证码冷却流程 =====
                         if result == "captcha":
                             captcha_notifier.notify_captcha_alert("comment", video_info.get("bv") or video_info.get("url", ""))
-                            log_comment_result(video_info, "验证码拦截", text)
+                            log_comment_result(video_info, "验证码拦截", text, comment_source)
                             if status_callback: status_callback(video_info['bv'], "验证码拦截")
                             
                             # 1. 记录并获取今日累计次数
@@ -287,7 +338,7 @@ def main(video_callback=None, status_callback=None):
                         
                         # ===== 正常评论结果处理 =====
                         status = "成功" if result == "success" else "失败"
-                        log_comment_result(video_info, status, text)
+                        log_comment_result(video_info, status, text, comment_source)
                         if status_callback: status_callback(video_info['bv'], status)
                         
                         if result == "success":

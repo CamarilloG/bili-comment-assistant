@@ -14,6 +14,8 @@ def sanitize_log(record):
     message = re.sub(r'DedeUserID=[^;]+', 'DedeUserID=***', message)
     message = re.sub(r'"password"\s*:\s*"[^"]+"', '"password": "***"', message)
     message = re.sub(r'"token"\s*:\s*"[^"]+"', '"token": "***"', message)
+    message = re.sub(r'(sk-)[a-zA-Z0-9]{4}[a-zA-Z0-9]+', r'\g<1>****', message)
+    message = re.sub(r'api_key["\s:=]+["\']?[a-zA-Z0-9_-]{8,}["\']?', 'api_key=***', message)
     
     record["message"] = message
     return True

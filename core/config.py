@@ -39,6 +39,24 @@ class ConfigValidator:
             "max_count": 3,
             "quiet_minutes": 5,
             "warmup_minutes": 30
+        },
+        "ai": {
+            "enabled": False,
+            "base_url": "https://api.deepseek.com/v1",
+            "api_key": "",
+            "model": "deepseek-chat",
+            "timeout": 30,
+            "max_retries": 2,
+            "comment": {
+                "enabled": True,
+                "user_intent": "",
+                "style": "casual",
+                "max_length": 100
+            },
+            "filter": {
+                "enabled": True,
+                "criteria": ""
+            }
         }
     }
     
@@ -111,7 +129,28 @@ class ConfigValidator:
             if "warmup_minutes" in captcha:
                 validated["captcha"]["warmup_minutes"] = max(5, int(captcha["warmup_minutes"]))
         
-        # Preserve warmup config section (used by warmup mode)
+        if "ai" in config:
+            ai = config["ai"]
+            ai_default = ConfigValidator.DEFAULT_CONFIG["ai"]
+            validated["ai"] = {
+                "enabled": bool(ai.get("enabled", ai_default["enabled"])),
+                "base_url": str(ai.get("base_url", ai_default["base_url"])),
+                "api_key": str(ai.get("api_key", ai_default["api_key"])),
+                "model": str(ai.get("model", ai_default["model"])),
+                "timeout": max(5, int(ai.get("timeout", ai_default["timeout"]))),
+                "max_retries": max(0, int(ai.get("max_retries", ai_default["max_retries"]))),
+                "comment": {
+                    "enabled": bool(ai.get("comment", {}).get("enabled", ai_default["comment"]["enabled"])),
+                    "user_intent": str(ai.get("comment", {}).get("user_intent", ai_default["comment"]["user_intent"])),
+                    "style": str(ai.get("comment", {}).get("style", ai_default["comment"]["style"])),
+                    "max_length": max(10, int(ai.get("comment", {}).get("max_length", ai_default["comment"]["max_length"]))),
+                },
+                "filter": {
+                    "enabled": bool(ai.get("filter", {}).get("enabled", ai_default["filter"]["enabled"])),
+                    "criteria": str(ai.get("filter", {}).get("criteria", ai_default["filter"]["criteria"])),
+                },
+            }
+
         if "warmup" in config:
             validated["warmup"] = config["warmup"]
         
@@ -126,6 +165,13 @@ class ConfigValidator:
         
         if not config["comment"]["texts"]:
             raise ValueError("At least one comment text is required!")
+        
+        ai = config.get("ai", {})
+        if ai.get("enabled"):
+            if not ai.get("api_key"):
+                raise ValueError("AI is enabled but api_key is empty!")
+            if not ai.get("base_url"):
+                raise ValueError("AI is enabled but base_url is empty!")
     
     @staticmethod
     def save_config(config: Dict[str, Any], path: str = "config.yaml") -> None:
