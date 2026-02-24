@@ -240,10 +240,11 @@ class CommentManager:
         except Exception:
             return False
 
-    def _verify_sent(self) -> str:
+    def _verify_sent(self) -> tuple[str, str]:
         # 1. 检查风控
-        if self._check_captcha(): return "captcha"
+        if self._check_captcha(): return "captcha", ""
         
+        toast_message = ""
         # 2. 优先尝试捕获 Toast 提示
         try:
             # Toast 通常在 .b-toast-container .b-toast
@@ -251,13 +252,17 @@ class CommentManager:
             # 等待 Toast 出现，超时时间 4秒
             toast.wait_for(state="visible", timeout=4000)
             text = toast.inner_text().strip()
+            toast_message = text
             logger.info(f"捕获到发送提示: {text}")
             
             if "成功" in text:
-                return "success"
+                return "success", toast_message
+            elif "cd时间未到不能评论" in text or "CD时间未到不能评论" in text:
+                logger.error(f"[风控] 检测到CD限制: {text}")
+                return "cd_limit", toast_message
             elif "验证码" in text or "频繁" in text or "禁言" in text:
                 logger.warning(f"发送失败，提示: {text}")
-                return "failed"
+                return "failed", toast_message
             else:
                 logger.warning(f"未知的发送提示: {text}")
                 # 继续走兜底逻辑
@@ -272,43 +277,43 @@ class CommentManager:
             for _ in range(10): # 5秒
                 if not editor.inner_text().strip():
                     logger.info("评论发布成功 (输入框已清空)。")
-                    return "success"
+                    return "success", toast_message
                 self.page.wait_for_timeout(500)
-                if self._check_captcha(): return "captcha"
+                if self._check_captcha(): return "captcha", ""
             
             logger.warning("发送后输入框未清空，可能发送失败。")
-            return "failed"
+            return "failed", toast_message
         except Exception as e:
             logger.warning(f"验证发送状态出错: {e}")
-            return "failed"
+            return "failed", toast_message
 
     @retry(max_attempts=2, delay=3.0, exceptions=(PlaywrightTimeoutError,))
-    def post_comment(self, url: str, text: str, image_path: str = None) -> str:
+    def post_comment(self, url: str, text: str, image_path: str = None) -> tuple[str, str]:
         logger.info(f"正在导航至视频: {url}")
         try:
             self.page.goto(url, wait_until="domcontentloaded")
             
             if self._check_captcha():
-                return "captcha"
+                return "captcha", ""
 
             if not self._scroll_to_comments():
-                return "failed"
+                return "failed", ""
 
             if not self._activate_editor():
-                return "failed"
+                return "failed", ""
 
             if image_path and os.path.exists(image_path):
                 self._upload_image(image_path)
 
             logger.info(f"输入评论: {text}")
             if not self._input_text(text):
-                return "failed"
+                return "failed", ""
             
             if not self._click_send():
-                return "failed"
+                return "failed", ""
 
             return self._verify_sent()
 
         except Exception as e:
             logger.error(f"发布评论出错: {e}")
-            return "failed"
+            return "failed", ""

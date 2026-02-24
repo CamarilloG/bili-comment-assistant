@@ -1,5 +1,6 @@
 account:
   cookie_file: cookies.json
+  skip_history: true
 search:
   keywords:
   - 穿越火线

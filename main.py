@@ -54,13 +54,13 @@ def reset_stop_flag():
     _stop_event.clear()
     _current_manager = None
 
-def log_comment_result(video_info, status, comment_text, source="Template"):
+def log_comment_result(video_info, status, comment_text, source="Template", toast_message=""):
     file_exists = os.path.isfile('comment_log.csv')
     try:
         with open('comment_log.csv', 'a', newline='', encoding='utf-8-sig') as f:
             writer = csv.writer(f)
             if not file_exists:
-                writer.writerow(['Time', 'BV', 'Title', 'Author', 'Status', 'Comment', 'Source'])
+                writer.writerow(['Time', 'BV', 'Title', 'Author', 'Status', 'Comment', 'Source', 'Toast'])
             
             writer.writerow([
                 datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -69,7 +69,8 @@ def log_comment_result(video_info, status, comment_text, source="Template"):
                 video_info.get('author', ''),
                 status,
                 comment_text,
-                source
+                source,
+                toast_message
             ])
     except Exception as e:
         logger.error(f"Failed to write to log file: {e}")
@@ -238,8 +239,9 @@ def main(video_callback=None, status_callback=None):
                 if not videos: break
                 
                 candidate_videos = []
+                skip_history = config.get("account", {}).get("skip_history", True)
                 for v in videos:
-                    if history_mgr.has(v['bv']): continue
+                    if skip_history and history_mgr.has(v['bv']): continue
                     if strict_match and keyword.lower() not in v.get('title', '').lower(): continue
                     
                     time_filter = filter_config.get("time_range", {})
@@ -286,12 +288,12 @@ def main(video_callback=None, status_callback=None):
                         if config["comment"].get("enable_image", False) and config["comment"].get("images"):
                             image_path = random.choice(config["comment"]["images"])
                         
-                        result = comment_mgr.post_comment(video_info['url'], text, image_path)
+                        result, toast_message = comment_mgr.post_comment(video_info['url'], text, image_path)
                         
                         # ===== 验证码冷却流程 =====
                         if result == "captcha":
                             captcha_notifier.notify_captcha_alert("comment", video_info.get("bv") or video_info.get("url", ""))
-                            log_comment_result(video_info, "验证码拦截", text, comment_source)
+                            log_comment_result(video_info, "验证码拦截", text, comment_source, toast_message)
                             if status_callback: status_callback(video_info['bv'], "验证码拦截")
                             
                             # 1. 记录并获取今日累计次数
@@ -336,9 +338,35 @@ def main(video_callback=None, status_callback=None):
                             # 跳过当前视频，继续下一个
                             continue
                         
+                        # ===== CD限制冷却流程 =====
+                        if result == "cd_limit":
+                            cd_start_time = datetime.now()
+                            logger.error(f"[风控CD] 首条CD限制消息时间: {cd_start_time.strftime('%Y-%m-%d %H:%M:%S')}")
+                            log_comment_result(video_info, "CD限制", text, comment_source, toast_message)
+                            if status_callback: status_callback(video_info['bv'], "CD限制")
+                            
+                            # 记录CD状态并进入养号模式
+                            logger.info(f"[风控CD] 检测到CD限制，进入养号模式...")
+                            if status_callback: status_callback(video_info['bv'], "养号冷却")
+                            try:
+                                if warmup_mgr is None:
+                                    warmup_mgr = WarmupManager(context, config, captcha_notifier)
+                                _current_manager = warmup_mgr
+                                warmup_mgr.run(duration_override=60)
+                            except Exception as e:
+                                logger.error(f"CD养号过程出错: {e}")
+                            finally:
+                                _current_manager = None
+                            
+                            # 增大延迟倍率
+                            delay_multiplier *= 2.0
+                            logger.info(f"[风控CD] CD限制处理完成，评论间隔倍率已调整为 {delay_multiplier:.1f}x")
+                            
+                            continue
+                        
                         # ===== 正常评论结果处理 =====
                         status = "成功" if result == "success" else "失败"
-                        log_comment_result(video_info, status, text, comment_source)
+                        log_comment_result(video_info, status, text, comment_source, toast_message)
                         if status_callback: status_callback(video_info['bv'], status)
                         
                         if result == "success":

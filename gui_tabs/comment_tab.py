@@ -32,6 +32,7 @@ class CommentTab(ttk.Frame):
         self.strict_match_var = tk.BooleanVar(value=False)
         self.progress_var = tk.StringVar(value="就绪")
         self.time_filter_var = tk.StringVar(value="none")
+        self.skip_history_var = tk.BooleanVar(value=True)
         
         self.setup_ui()
         self.load_config()
@@ -144,6 +145,9 @@ class CommentTab(ttk.Frame):
         self.strat_cb.current(0)
 
         ttk.Checkbutton(filter_group, text="严格匹配 (标题含关键词)", variable=self.strict_match_var, onvalue=True, offvalue=False).grid(row=1, column=2, columnspan=2, sticky=W, padx=10)
+        
+        self.skip_history_cb = ttk.Checkbutton(filter_group, text="跳过历史视频", variable=self.skip_history_var, onvalue=True, offvalue=False, bootstyle="round-toggle-success")
+        self.skip_history_cb.grid(row=3, column=0, columnspan=4, sticky=W, pady=5)
         
         ttk.Label(filter_group, text="时间限制:").grid(row=2, column=0, sticky=W, pady=2)
         self.time_filter_cb = ttk.Combobox(filter_group, textvariable=self.time_filter_var, values=["不限制", "近几天", "指定日期范围"], state="readonly")
@@ -277,6 +281,9 @@ class CommentTab(ttk.Frame):
             self.timeout_entry.insert(0, behavior.get('timeout', 30000))
             self.headless_var.set(behavior.get('headless', False))
             
+            account = conf.get('account', {})
+            self.skip_history_var.set(account.get('skip_history', True))
+            
             browser = conf.get('browser', {})
             self.browser_path_var.set(browser.get('path', ''))
             self.browser_port_var.set(browser.get('port', 0))
@@ -336,7 +343,10 @@ class CommentTab(ttk.Frame):
                 conf = {}
 
             conf.update({
-                "account": {"cookie_file": "cookies.json"},
+                "account": {
+                    "cookie_file": "cookies.json",
+                    "skip_history": self.skip_history_var.get()
+                },
                 "search": {
                     "keywords": keywords,
                     "max_videos_per_keyword": int(self.max_videos.get()),

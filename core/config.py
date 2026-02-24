@@ -6,7 +6,8 @@ class ConfigValidator:
     
     DEFAULT_CONFIG = {
         "account": {
-            "cookie_file": "cookies.json"
+            "cookie_file": "cookies.json",
+            "skip_history": True
         },
         "search": {
             "keywords": [],
@@ -79,6 +80,8 @@ class ConfigValidator:
         
         if "account" in config:
             validated["account"].update(config["account"])
+            if "skip_history" in config["account"]:
+                validated["account"]["skip_history"] = bool(config["account"]["skip_history"])
         
         if "search" in config:
             if "keywords" in config["search"]:
