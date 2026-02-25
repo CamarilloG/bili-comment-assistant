@@ -29,8 +29,9 @@ class ConfigUpdateBody(BaseModel):
     config: Dict[str, Any]
 
 
-def _read_raw_config(path: str = "config.yaml") -> Dict[str, Any]:
+def _read_raw_config(path: str) -> Dict[str, Any]:
     """Read config and fill defaults without running required-field validation."""
+    import os
     if not os.path.exists(path):
         ConfigValidator.load_config(path)
     with open(path, "r", encoding="utf-8") as f:
@@ -41,7 +42,11 @@ def _read_raw_config(path: str = "config.yaml") -> Dict[str, Any]:
 @router.get("")
 async def get_config():
     try:
-        config = _read_raw_config()
+        import os
+        config_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        config_path = os.path.join(config_dir, "config.yaml")
+
+        config = _read_raw_config(config_path)
         if "ai" in config and config["ai"].get("api_key"):
             masked = config["ai"]["api_key"]
             if masked not in ("", "YOUR_API_KEY_HERE"):
@@ -54,7 +59,12 @@ async def get_config():
 @router.put("")
 async def update_config(body: ConfigUpdateBody):
     try:
-        existing = _read_raw_config()
+        import os
+        config_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        config_path = os.path.join(config_dir, "config.yaml")
+        logger.info(f"Updating config, path: {config_path}")
+
+        existing = _read_raw_config(config_path)
 
         incoming = body.config
         if "ai" in incoming and incoming["ai"].get("api_key") == "***":
@@ -62,7 +72,9 @@ async def update_config(body: ConfigUpdateBody):
 
         merged = _deep_merge(existing, incoming)
         validated = ConfigValidator.validate_and_fill_defaults(merged, strict=False)
-        ConfigValidator.save_config(validated)
+        ConfigValidator.save_config(validated, config_path)
+
+        logger.info(f"Config saved, ai.enabled: {validated.get('ai', {}).get('enabled')}")
         return {"status": "ok"}
     except Exception as e:
         logger.error(f"Config update failed: {e}")
