@@ -14,6 +14,17 @@ logger = get_logger()
 router = APIRouter()
 
 
+def _deep_merge(base: Dict, update: Dict) -> Dict:
+    """深度合并两个字典，update 中的值会覆盖 base 中的值。"""
+    result = base.copy()
+    for key, value in update.items():
+        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+            result[key] = _deep_merge(result[key], value)
+        else:
+            result[key] = value
+    return result
+
+
 class ConfigUpdateBody(BaseModel):
     config: Dict[str, Any]
 
@@ -49,8 +60,8 @@ async def update_config(body: ConfigUpdateBody):
         if "ai" in incoming and incoming["ai"].get("api_key") == "***":
             incoming["ai"]["api_key"] = existing.get("ai", {}).get("api_key", "")
 
-        existing.update(incoming)
-        validated = ConfigValidator.validate_and_fill_defaults(existing, strict=False)
+        merged = _deep_merge(existing, incoming)
+        validated = ConfigValidator.validate_and_fill_defaults(merged, strict=False)
         ConfigValidator.save_config(validated)
         return {"status": "ok"}
     except Exception as e:
