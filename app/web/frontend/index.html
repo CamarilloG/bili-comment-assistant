@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>B站评论助手 — AI 中控台</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <header class="top-bar">
+        <h1>B站评论助手 — AI 中控台</h1>
+        <div class="status-indicator" id="connStatus">未连接</div>
+    </header>
+
+    <main class="panels">
+        <!-- Panel 1: Request Input -->
+        <section class="panel" id="panelRequest">
+            <h2>新建任务</h2>
+            <textarea id="userRequest" rows="5" placeholder="输入你的需求，例如：搜索关键词[Python教程]，对最近3天的视频发评论，评论要自然，每个视频不重复"></textarea>
+            <button id="btnSubmit" onclick="submitRequest()">提交需求</button>
+            <div class="hint" id="requestHint"></div>
+        </section>
+
+        <!-- Panel 2: Plan Confirmation -->
+        <section class="panel hidden" id="panelPlan">
+            <h2>执行计划</h2>
+            <div id="planInfo"></div>
+            <div class="plan-details">
+                <h3>任务列表</h3>
+                <div id="taskList"></div>
+                <h3>验收标准</h3>
+                <div id="acceptanceCriteria"></div>
+                <h3>风险评估</h3>
+                <div id="riskAssessment"></div>
+            </div>
+            <div class="btn-row">
+                <button class="btn-primary" onclick="confirmPlan()">确认执行</button>
+                <button class="btn-secondary" onclick="resetToInput()">修改需求</button>
+            </div>
+        </section>
+
+        <!-- Panel 3: Execution Monitor -->
+        <section class="panel hidden" id="panelMonitor">
+            <h2>执行监控</h2>
+            <div class="monitor-header">
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progressFill" style="width: 0%"></div>
+                </div>
+                <span id="roundInfo">轮次: -</span>
+                <button class="btn-danger" onclick="stopExecution()">紧急中止</button>
+            </div>
+            <div class="monitor-body">
+                <div class="task-status-list" id="taskStatusList"></div>
+                <div class="log-stream">
+                    <h3>实时日志</h3>
+                    <div id="logContainer" class="log-container"></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Panel 4: Report -->
+        <section class="panel hidden" id="panelReport">
+            <h2>执行报告</h2>
+            <div id="reportSummary"></div>
+            <div id="reportDetails"></div>
+            <div class="btn-row">
+                <button class="btn-secondary" onclick="resetToInput()">新建任务</button>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <div class="footer-links">
+            <a href="#" onclick="showModules()">已注册模块</a>
+            <a href="#" onclick="showBrowserStatus()">浏览器状态</a>
+            <a href="#" onclick="showModelConfig()">模型配置</a>
+        </div>
+    </footer>
+
+    <!-- Modal -->
+    <div class="modal-overlay hidden" id="modalOverlay" onclick="closeModal()">
+        <div class="modal" onclick="event.stopPropagation()">
+            <div class="modal-header">
+                <h3 id="modalTitle">信息</h3>
+                <button onclick="closeModal()">&times;</button>
+            </div>
+            <div class="modal-body" id="modalBody"></div>
+        </div>
+    </div>
+
+    <script src="/js/app.js?v=3"></script>
+</body>
+</html>

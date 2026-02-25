@@ -1,0 +1,28 @@
+# Python
+**/__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
+
+# Node
+**/node_modules/
+
+# 本地配置与敏感文件
+app/config.yaml
+app/cookies.json
+.env
+*.local
+
+# 日志与构建产物
+**/logs/
+*.log
+**/dist/
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db

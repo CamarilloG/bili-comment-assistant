@@ -1,0 +1,470 @@
+import time
+import sys
+import random
+import threading
+import csv
+import os
+from datetime import datetime, timedelta
+from playwright.sync_api import sync_playwright
+from core.auth import AuthManager
+from core.search import SearchManager
+from core.comment import CommentManager
+from core.history import HistoryManager
+from core.config import ConfigValidator
+from core.warmup import WarmupManager
+from core.ai_manager import AIManager
+from core.captcha_tracker import CaptchaTracker
+from core.notifier import CaptchaNotifier
+from utils.logger import get_logger
+from utils.date_parser import parse_bilibili_date
+from server.api import start_server
+from core.context import context as global_context
+
+logger = get_logger()
+
+_stop_event = threading.Event()
+_current_manager = None
+_server_started = False
+
+def start_api_server():
+    global _server_started
+    if not _server_started:
+        try:
+            server_thread = threading.Thread(target=start_server, daemon=True)
+            server_thread.start()
+            _server_started = True
+            logger.info("API Server started at http://localhost:8000")
+        except Exception as e:
+            logger.error(f"Failed to start API server: {e}")
+
+
+def is_api_server_started():
+    """Whether the debug API server has been started (e.g. by user clicking 开启调试模式)."""
+    return _server_started
+
+def stop_task():
+    global _current_manager
+    _stop_event.set()
+    if _current_manager:
+        _current_manager.stop()
+    logger.info("收到停止信号。")
+
+def reset_stop_flag():
+    global _current_manager
+    _stop_event.clear()
+    _current_manager = None
+
+def log_comment_result(video_info, status, comment_text, source="Template", toast_message=""):
+    file_exists = os.path.isfile('comment_log.csv')
+    try:
+        with open('comment_log.csv', 'a', newline='', encoding='utf-8-sig') as f:
+            writer = csv.writer(f)
+            if not file_exists:
+                writer.writerow(['Time', 'BV', 'Title', 'Author', 'Status', 'Comment', 'Source', 'Toast'])
+            
+            writer.writerow([
+                datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                video_info.get('bv', ''),
+                video_info.get('title', ''),
+                video_info.get('author', ''),
+                status,
+                comment_text,
+                source,
+                toast_message
+            ])
+    except Exception as e:
+        logger.error(f"Failed to write to log file: {e}")
+
+def _check_and_fix_runasadmin(executable_path):
+    if sys.platform != "win32":
+        return
+    try:
+        import winreg
+        reg_path = r"Software\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Layers"
+        norm_path = os.path.normpath(executable_path)
+        try:
+            key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, reg_path, 0, winreg.KEY_READ | winreg.KEY_WRITE)
+        except OSError:
+            return
+        try:
+            value, _ = winreg.QueryValueEx(key, norm_path)
+        except FileNotFoundError:
+            winreg.CloseKey(key)
+            return
+        if "RUNASADMIN" not in value.upper():
+            winreg.CloseKey(key)
+            return
+        parts = [p.strip() for p in value.split() if p.strip().upper() not in ("~", "RUNASADMIN")]
+        if parts:
+            new_value = " ".join(parts)
+            winreg.SetValueEx(key, norm_path, 0, winreg.REG_SZ, new_value)
+            logger.warning(f"已从兼容性设置中移除 RUNASADMIN 标志（保留其他标志: {new_value}）")
+        else:
+            try:
+                winreg.DeleteValue(key, norm_path)
+            except OSError:
+                winreg.SetValueEx(key, norm_path, 0, winreg.REG_SZ, "")
+            logger.warning("已移除浏览器的「以管理员身份运行」兼容性设置，否则 Playwright 无法启动该浏览器")
+        winreg.CloseKey(key)
+    except Exception as e:
+        logger.warning(f"检查/修复 RUNASADMIN 兼容性标志时出错: {e}，如果浏览器启动失败，请手动取消 chrome.exe 属性中的「以管理员身份运行」")
+
+
+def get_browser_launch_args(config, force_headed=False):
+    headless = config["behavior"].get("headless", False)
+    if force_headed:
+        headless = False
+        
+    browser_config = config.get("browser", {})
+    executable_path = browser_config.get("path", "")
+    debug_port = browser_config.get("port", 0)
+    
+    launch_args = {
+        "headless": headless,
+        "args": [
+            "--disable-infobars",
+            "--window-size=1280,720",
+            "--disable-blink-features=AutomationControlled",
+            "--mute-audio",
+            "--disable-gpu",
+            "--disable-dev-shm-usage"
+        ]
+    }
+    
+    if executable_path:
+        executable_path = os.path.normpath(executable_path)
+
+    if executable_path and os.path.exists(executable_path):
+        _check_and_fix_runasadmin(executable_path)
+        launch_args["executable_path"] = executable_path
+        launch_args["ignore_default_args"] = ["--no-sandbox"]
+        
+        logger.info(f"将使用指定路径拉起浏览器: {executable_path}")
+        
+        if headless:
+             logger.info("使用外部浏览器，尝试以无头模式运行...")
+    elif getattr(sys, 'frozen', False):
+        logger.error("在打包环境中运行，必须在配置中指定浏览器路径！")
+        return None
+        
+    if debug_port > 0:
+        launch_args["args"].append(f"--remote-debugging-port={debug_port}")
+    
+    return launch_args
+
+def main(video_callback=None, status_callback=None):
+    global _current_manager
+    reset_stop_flag()
+
+    try:
+        config = ConfigValidator.load_config()
+    except Exception as e:
+        logger.error(f"Configuration error: {e}")
+        return
+
+    launch_args = get_browser_launch_args(config)
+    if not launch_args: return
+
+    with sync_playwright() as p:
+        try:
+            browser = p.chromium.launch(**launch_args)
+        except Exception as e:
+            logger.error(f"启动浏览器失败: {e}")
+            return
+            
+        context = browser.new_context(
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            viewport={'width': 1280, 'height': 720}
+        )
+        context.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+        
+        auth = AuthManager(context, config["account"]["cookie_file"])
+        if not auth.login():
+            logger.error("登录失败。正在退出。")
+            browser.close()
+            return
+
+        search_page = context.new_page()
+        comment_page = context.new_page()
+        
+        # Register page for debugging
+        global_context.page = comment_page
+        
+        search_mgr = SearchManager(search_page)
+        comment_mgr = CommentManager(comment_page)
+        history_mgr = HistoryManager()
+        captcha_tracker = CaptchaTracker()
+        captcha_notifier = CaptchaNotifier()
+        ai_manager = AIManager(config)
+        
+        # 验证码冷却相关配置
+        captcha_config = config.get("captcha", {})
+        captcha_max_count = captcha_config.get("max_count", 3)
+        captcha_quiet_minutes = captcha_config.get("quiet_minutes", 5)
+        captcha_warmup_base = captcha_config.get("warmup_minutes", 30)
+        
+        # 动态延迟倍率（验证码触发后会增大）
+        delay_multiplier = 1.0
+        
+        keywords = config["search"]["keywords"]
+        target_count = config["search"]["max_videos_per_keyword"]
+        total_success = 0
+        captcha_terminated = False
+        warmup_mgr = None  # lazy-loaded for captcha cooldown and interval warmup
+
+        for keyword in keywords:
+            if _stop_event.is_set() or captcha_terminated: break
+            if total_success >= target_count: break
+            logger.info(f"正在处理关键词: {keyword}")
+            is_first_page = True
+            
+            while total_success < target_count and not _stop_event.is_set() and not captcha_terminated:
+                strategy_config = config["search"].get("strategy", {})
+                selection_mode = strategy_config.get("selection", "order")
+                strict_match = strategy_config.get("strict_title_match", False)
+                filter_config = config["search"].get("filter", {})
+                
+                if is_first_page:
+                    videos = search_mgr.search_videos(
+                        keyword, 
+                        max_count=1000,
+                        order=filter_config.get("sort", "totalrank"),
+                        duration=filter_config.get("duration", 0),
+                        time_range=filter_config.get("time_range")
+                    )
+                    is_first_page = False
+                else:
+                    videos = search_mgr.get_current_page_videos(max_count=1000)
+                
+                if not videos: break
+                
+                candidate_videos = []
+                skip_history = config.get("account", {}).get("skip_history", True)
+                for v in videos:
+                    if skip_history and history_mgr.has(v['bv']): continue
+                    if strict_match and keyword.lower() not in v.get('title', '').lower(): continue
+                    
+                    time_filter = filter_config.get("time_range", {})
+                    t_type = time_filter.get("type", "none")
+                    if t_type != "none":
+                        v_date = parse_bilibili_date(v.get('date', ''))
+                        if not v_date: continue
+                        if t_type == "recent":
+                            if v_date < datetime.now() - timedelta(days=time_filter.get("value", 1)): continue
+                        elif t_type == "range":
+                            val = time_filter.get("value", {})
+                            try:
+                                s_date = datetime.strptime(val.get("start"), "%Y-%m-%d")
+                                e_date = datetime.strptime(val.get("end"), "%Y-%m-%d") + timedelta(days=1)
+                                if not (s_date <= v_date < e_date): continue
+                            except: continue
+                    candidate_videos.append(v)
+                
+                if candidate_videos:
+                    if selection_mode == "random": random.shuffle(candidate_videos)
+                    for video_info in candidate_videos:
+                        if _stop_event.is_set() or total_success >= target_count or captcha_terminated: break
+                        if video_callback: video_callback(video_info)
+                        if status_callback: status_callback(video_info['bv'], "处理中...")
+                        
+                        # Fetch extended context for AI if enabled
+                        filter_cfg = config.get("ai", {}).get("filter", {})
+                        if (ai_manager.is_filter_enabled() or ai_manager.is_comment_enabled()) and \
+                                (filter_cfg.get("use_comments") or filter_cfg.get("use_related")):
+                            from core.video_detail import fetch_top_comments, fetch_related_titles, truncate_comments
+                            if filter_cfg.get("use_comments"):
+                                raw_comments = fetch_top_comments(
+                                    comment_page, video_info['url'],
+                                    max_count=filter_cfg.get("max_comments", 10),
+                                )
+                                video_info["top_comments"] = truncate_comments(raw_comments)
+                            if filter_cfg.get("use_related"):
+                                related = fetch_related_titles(
+                                    comment_page,
+                                    max_count=filter_cfg.get("max_related", 5),
+                                )
+                                video_info["related_titles"] = "\n".join(related) if related else "(无)"
+
+                        if ai_manager.is_filter_enabled():
+                            keep, reason = ai_manager.check_video_relevance(video_info)
+                            if not keep:
+                                logger.info(f"[AI筛选] 跳过视频: {video_info['title']} | 原因: {reason}")
+                                if status_callback: status_callback(video_info['bv'], f"AI跳过: {reason}")
+                                continue
+                        
+                        comment_source = "Template"
+                        text = None
+                        if ai_manager.is_comment_enabled():
+                            text = ai_manager.generate_comment(video_info)
+                            if text:
+                                comment_source = "AI"
+                            else:
+                                logger.warning("AI 评论生成失败，降级使用模板")
+                        if not text:
+                            text = random.choice(config["comment"]["texts"])
+                        image_path = None
+                        if ai_manager.is_comment_enabled():
+                            ai_comment_cfg = config.get("ai", {}).get("comment", {})
+                            if ai_comment_cfg.get("enable_image", False) and ai_comment_cfg.get("images"):
+                                image_path = random.choice(ai_comment_cfg["images"])
+                        else:
+                            if config["comment"].get("enable_image", False) and config["comment"].get("images"):
+                                image_path = random.choice(config["comment"]["images"])
+                        result, toast_message = comment_mgr.post_comment(video_info['url'], text, image_path)
+                        
+                        # ===== 验证码冷却流程 =====
+                        if result == "captcha":
+                            captcha_notifier.notify_captcha_alert("comment", video_info.get("bv") or video_info.get("url", ""))
+                            log_comment_result(video_info, "验证码拦截", text, comment_source, toast_message)
+                            if status_callback: status_callback(video_info['bv'], "验证码拦截")
+                            
+                            # 1. 记录并获取今日累计次数
+                            captcha_count = captcha_tracker.record()
+                            
+                            # 2. 检查是否超过上限
+                            if captcha_count >= captcha_max_count:
+                                captcha_notifier.notify_terminated(captcha_count, captcha_max_count)
+                                captcha_terminated = True
+                                break
+                            
+                            # 3. 计算冷却时长
+                            cooldown_minutes = captcha_tracker.get_cooldown_minutes(captcha_warmup_base)
+                            
+                            # 4. 发送通知
+                            captcha_notifier.notify(captcha_count, cooldown_minutes, captcha_quiet_minutes)
+                            
+                            # 5. 静默等待
+                            logger.info(f"[风控冷却] 开始静默等待 {captcha_quiet_minutes} 分钟...")
+                            if status_callback: status_callback(video_info['bv'], f"静默等待{captcha_quiet_minutes}分钟")
+                            if _stop_event.wait(captcha_quiet_minutes * 60):
+                                logger.info("静默等待期间收到停止信号，终止任务。")
+                                break
+                            
+                            # 6. 进入养号模式
+                            logger.info(f"[风控冷却] 静默结束，进入养号模式 {cooldown_minutes} 分钟...")
+                            if status_callback: status_callback(video_info['bv'], f"养号冷却{cooldown_minutes}分钟")
+                            try:
+                                if warmup_mgr is None:
+                                    warmup_mgr = WarmupManager(context, config, captcha_notifier)
+                                _current_manager = warmup_mgr
+                                warmup_mgr.run(duration_override=cooldown_minutes)
+                            except Exception as e:
+                                logger.error(f"冷却养号过程出错: {e}")
+                            finally:
+                                _current_manager = None
+                            
+                            # 7. 增大后续评论间隔
+                            delay_multiplier *= 1.5
+                            logger.info(f"[风控冷却] 冷却完成，评论间隔倍率已调整为 {delay_multiplier:.1f}x")
+                            
+                            # 跳过当前视频，继续下一个
+                            continue
+                        
+                        # ===== CD限制冷却流程 =====
+                        if result == "cd_limit":
+                            cd_start_time = datetime.now()
+                            logger.error(f"[风控CD] 首条CD限制消息时间: {cd_start_time.strftime('%Y-%m-%d %H:%M:%S')}")
+                            log_comment_result(video_info, "CD限制", text, comment_source, toast_message)
+                            if status_callback: status_callback(video_info['bv'], "CD限制")
+                            
+                            # 记录CD状态并进入养号模式
+                            logger.info(f"[风控CD] 检测到CD限制，进入养号模式...")
+                            if status_callback: status_callback(video_info['bv'], "养号冷却")
+                            try:
+                                if warmup_mgr is None:
+                                    warmup_mgr = WarmupManager(context, config, captcha_notifier)
+                                _current_manager = warmup_mgr
+                                warmup_mgr.run(duration_override=60)
+                            except Exception as e:
+                                logger.error(f"CD养号过程出错: {e}")
+                            finally:
+                                _current_manager = None
+                            
+                            # 增大延迟倍率
+                            delay_multiplier *= 2.0
+                            logger.info(f"[风控CD] CD限制处理完成，评论间隔倍率已调整为 {delay_multiplier:.1f}x")
+                            
+                            continue
+                        
+                        # ===== 正常评论结果处理 =====
+                        status = "成功" if result == "success" else "失败"
+                        log_comment_result(video_info, status, text, comment_source, toast_message)
+                        if status_callback: status_callback(video_info['bv'], status)
+                        
+                        if result == "success":
+                            history_mgr.add(video_info['bv'])
+                            total_success += 1
+                        
+                        base_min = config["behavior"].get("min_delay", 5)
+                        base_max = config["behavior"].get("max_delay", 15)
+                        delay = random.uniform(base_min * delay_multiplier, base_max * delay_multiplier)
+                        if delay >= 180:
+                            logger.info(f"评论间隔 {delay:.1f} 秒 ≥ 3 分钟，进入养号模式填充间隔")
+                            if status_callback: status_callback(video_info['bv'], "养号填充间隔")
+                            try:
+                                if warmup_mgr is None:
+                                    warmup_mgr = WarmupManager(context, config, captcha_notifier)
+                                _current_manager = warmup_mgr
+                                warmup_mgr.run(duration_override=delay / 60)
+                            except Exception as e:
+                                logger.error(f"间隔养号出错: {e}")
+                            finally:
+                                _current_manager = None
+                            if _stop_event.is_set():
+                                logger.info("养号期间收到停止信号，终止任务。")
+                                break
+                        else:
+                            logger.info(f"评论间隔延迟: 等待 {delay:.1f} 秒后继续下一个视频...{' (间隔已因风控增大)' if delay_multiplier > 1.0 else ''}")
+                            if _stop_event.wait(delay):
+                                logger.info("延迟期间收到停止信号，终止任务。")
+                                break
+                
+                if total_success >= target_count or captcha_terminated or not search_mgr.go_to_next_page(): break
+            
+        if captcha_terminated:
+            logger.info(f"任务因验证码次数达上限而终止。本次成功评论: {total_success}/{target_count}")
+        else:
+            logger.info(f"所有任务已完成。本次成功评论: {total_success}/{target_count}")
+        browser.close()
+
+def run_warmup(status_callback=None):
+    global _current_manager
+    reset_stop_flag()
+
+    try:
+        config = ConfigValidator.load_config()
+    except Exception as e:
+        logger.error(f"Configuration error: {e}")
+        return
+
+    launch_args = get_browser_launch_args(config, force_headed=True)
+    if not launch_args: return
+
+    logger.info("养号模式强制使用有头浏览器（已静音）")
+
+    with sync_playwright() as p:
+        try:
+            browser = p.chromium.launch(**launch_args)
+        except Exception as e:
+            logger.error(f"启动浏览器失败: {e}")
+            return
+            
+        context = browser.new_context(
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            viewport={'width': 1280, 'height': 720}
+        )
+        context.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+        
+        auth = AuthManager(context, config["account"]["cookie_file"])
+        if not auth.login():
+            logger.error("登录失败。正在退出。")
+            browser.close()
+            return
+
+        _current_manager = WarmupManager(context, config, CaptchaNotifier())
+        _current_manager.run(status_callback=status_callback)
+        
+        browser.close()
+
+if __name__ == "__main__":
+    main()
