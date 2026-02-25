@@ -52,11 +52,17 @@ class ConfigValidator:
                 "enabled": True,
                 "user_intent": "",
                 "style": "casual",
-                "max_length": 100
+                "max_length": 100,
+                "min_length": 10
             },
             "filter": {
                 "enabled": True,
-                "criteria": ""
+                "criteria": "",
+                "sensitivity": 50,
+                "use_comments": False,
+                "use_related": False,
+                "max_comments": 10,
+                "max_related": 5
             }
         }
     }
@@ -64,7 +70,11 @@ class ConfigValidator:
     @staticmethod
     def load_config(path: str = "config.yaml") -> Dict[str, Any]:
         if not os.path.exists(path):
-            raise FileNotFoundError(f"Config file {path} not found!")
+            import copy
+            default = copy.deepcopy(ConfigValidator.DEFAULT_CONFIG)
+            default["search"]["keywords"] = ["示例关键词"]
+            default["comment"]["texts"] = ["默认评论"]
+            ConfigValidator.save_config(default, path)
         
         with open(path, "r", encoding="utf-8") as f:
             config = yaml.safe_load(f)
@@ -72,7 +82,7 @@ class ConfigValidator:
         return ConfigValidator.validate_and_fill_defaults(config)
     
     @staticmethod
-    def validate_and_fill_defaults(config: Dict[str, Any]) -> Dict[str, Any]:
+    def validate_and_fill_defaults(config: Dict[str, Any], strict: bool = True) -> Dict[str, Any]:
         validated = ConfigValidator.DEFAULT_CONFIG.copy()
         
         if not config:
@@ -147,17 +157,24 @@ class ConfigValidator:
                     "user_intent": str(ai.get("comment", {}).get("user_intent", ai_default["comment"]["user_intent"])),
                     "style": str(ai.get("comment", {}).get("style", ai_default["comment"]["style"])),
                     "max_length": max(10, int(ai.get("comment", {}).get("max_length", ai_default["comment"]["max_length"]))),
+                    "min_length": max(1, int(ai.get("comment", {}).get("min_length", ai_default["comment"]["min_length"]))),
                 },
                 "filter": {
                     "enabled": bool(ai.get("filter", {}).get("enabled", ai_default["filter"]["enabled"])),
                     "criteria": str(ai.get("filter", {}).get("criteria", ai_default["filter"]["criteria"])),
+                    "sensitivity": max(1, min(100, int(ai.get("filter", {}).get("sensitivity", ai_default["filter"]["sensitivity"])))),
+                    "use_comments": bool(ai.get("filter", {}).get("use_comments", ai_default["filter"]["use_comments"])),
+                    "use_related": bool(ai.get("filter", {}).get("use_related", ai_default["filter"]["use_related"])),
+                    "max_comments": max(1, min(30, int(ai.get("filter", {}).get("max_comments", ai_default["filter"]["max_comments"])))),
+                    "max_related": max(1, min(20, int(ai.get("filter", {}).get("max_related", ai_default["filter"]["max_related"])))),
                 },
             }
 
         if "warmup" in config:
             validated["warmup"] = config["warmup"]
         
-        ConfigValidator._validate_required_fields(validated)
+        if strict:
+            ConfigValidator._validate_required_fields(validated)
         
         return validated
     

@@ -47,9 +47,27 @@ ai:
       不要用emoji表情。'
     style: enthusiastic
     max_length: 100
+    min_length: 10
   filter:
     enabled: true
     criteria: 只选择穿越火线，CF强相关视频内容，跳过明显无关或者关联性较差的，包括其他游戏或者完全游戏无关的内容。
+    sensitivity: 50
+    use_comments: false
+    use_related: false
+    max_comments: 10
+    max_related: 5
+bots:
+  wecom:
+    enabled: false
+    webhook_url: ""
+    receive_enabled: false
+    callback_token: ""
+    callback_aes_key: ""
+  qqbot:
+    enabled: false
+    api_url: "http://localhost:5700"
+    access_token: ""
+    target_group: ""
 warmup:
   basic:
     duration_minutes: 30

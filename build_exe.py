@@ -2,27 +2,28 @@ import os
 import subprocess
 import sys
 
+VERSION = "V2.2"
+
 def build():
-    # PyInstaller command arguments
     args = [
         sys.executable, "-m", "PyInstaller",
         "--noconfirm",
         "--onefile",
         "--windowed",
-        "--name", "BiliCommentBot_V2.1",
+        "--name", f"BiliCommentBot_{VERSION}",
         "--hidden-import", "ttkbootstrap",
         "--collect-all", "ttkbootstrap",
         "--clean",
         "gui.py"
     ]
     
-    print("Starting build process...")
+    print(f"Starting build process for {VERSION}...")
     print(f"Command: {' '.join(args)}")
     
     try:
         subprocess.check_call(args)
-        print("\nBuild completed successfully!")
-        print(f"Executable can be found in: {os.path.join(os.getcwd(), 'dist', 'BiliCommentBot_V2.1.exe')}")
+        print(f"\nBuild completed successfully!")
+        print(f"Executable: {os.path.join(os.getcwd(), 'dist', f'BiliCommentBot_{VERSION}.exe')}")
     except subprocess.CalledProcessError as e:
         print(f"\nBuild failed with error code {e.returncode}")
     except Exception as e:

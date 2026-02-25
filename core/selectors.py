@@ -48,6 +48,13 @@ class BilibiliSelectors:
         "captcha": ".geetest_widget, .geetest_window, .bili-mini-mask"
     }
 
+    VIDEO_DETAIL = {
+        "comment_item": "bili-comment-thread-renderer",
+        "comment_text": "bili-rich-text",
+        "related_card": ".rec-list .video-page-card-small, .recommend-list-v1 .video-page-card-small, .rec-list-m .video-card",
+        "related_title": ".title, .info a[title]",
+    }
+
     @staticmethod
     def get_login_avatar():
         return BilibiliSelectors.LOGIN["avatar"]
