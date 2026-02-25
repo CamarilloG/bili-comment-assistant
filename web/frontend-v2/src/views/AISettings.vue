@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useConfigStore } from '../stores/config'
 
 const configStore = useConfigStore()
@@ -40,9 +40,9 @@ const sensitivityLabel = computed(() => {
   return '极度严格'
 })
 
-onMounted(() => {
-  if (configStore.config?.ai) loadFromConfig(configStore.config.ai)
-})
+watch(() => configStore.config, (newConfig) => {
+  if (newConfig?.ai) loadFromConfig(newConfig.ai)
+}, { immediate: true })
 
 function loadFromConfig(ai) {
   aiEnabled.value = ai.enabled || false
