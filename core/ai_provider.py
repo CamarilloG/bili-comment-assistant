@@ -1,8 +1,17 @@
+import json
 import time
+import os
+from datetime import datetime
 from openai import OpenAI
 from utils.logger import get_logger
 
 logger = get_logger()
+
+
+def _get_log_dir():
+    dir_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "logs")
+    os.makedirs(dir_path, exist_ok=True)
+    return dir_path
 
 
 class AIProvider:
@@ -18,6 +27,24 @@ class AIProvider:
         self.max_retries = ai_cfg.get("max_retries", 2)
 
     def chat(self, system_prompt: str, user_prompt: str) -> str | None:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        log_file = os.path.join(_get_log_dir(), f"ai_request_{timestamp}.json")
+        
+        request_data = {
+            "timestamp": timestamp,
+            "model": self.model,
+            "base_url": self.client.base_url,
+            "system_prompt": system_prompt,
+            "user_prompt": user_prompt,
+            "temperature": 0.8,
+            "max_tokens": 256,
+        }
+        
+        with open(log_file, "w", encoding="utf-8") as f:
+            json.dump(request_data, f, ensure_ascii=False, indent=2)
+        
+        logger.info(f"[AI] 请求日志已保存: {log_file}")
+        
         for attempt in range(1, self.max_retries + 2):
             try:
                 start = time.time()
@@ -38,20 +65,53 @@ class AIProvider:
                     if usage else f"[AI] 耗时 {elapsed:.1f}s"
                 )
                 
+                response_data = {
+                    "attempt": attempt,
+                    "elapsed_seconds": elapsed,
+                    "usage": {
+                        "prompt_tokens": usage.prompt_tokens if usage else None,
+                        "completion_tokens": usage.completion_tokens if usage else None,
+                        "total_tokens": usage.total_tokens if usage else None,
+                    },
+                    "raw_response": str(resp),
+                    "choices": [],
+                }
+                
                 if not resp.choices:
                     logger.warning("[AI] 响应中没有 choices")
+                    with open(log_file, "w", encoding="utf-8") as f:
+                        json.dump({**request_data, **response_data}, f, ensure_ascii=False, indent=2)
                     return None
                     
                 msg = resp.choices[0].message
                 content = msg.content
                 
+                response_data["choices"].append({
+                    "message": {
+                        "role": msg.role,
+                        "content": msg.content,
+                    },
+                    "finish_reason": resp.choices[0].finish_reason,
+                })
+                
+                with open(log_file, "w", encoding="utf-8") as f:
+                    json.dump({**request_data, **response_data}, f, ensure_ascii=False, indent=2)
+                
+                logger.info(f"[AI] 响应日志已保存: {log_file}")
+                
                 if content is None:
                     logger.warning(f"[AI] message.content 为 None，reason: {msg}")
+                    return None
+                
+                if not content.strip():
+                    logger.warning(f"[AI] message.content 为空字符串，原始响应: {msg}")
                     return None
                     
                 return content.strip()
             except Exception as e:
                 logger.warning(f"[AI] 调用失败 (第{attempt}次): {e}")
+                with open(log_file, "w", encoding="utf-8") as f:
+                    json.dump({**request_data, "error": str(e)}, f, ensure_ascii=False, indent=2)
                 if attempt > self.max_retries:
                     logger.error("[AI] 已达最大重试次数，放弃本次调用")
                     return None
