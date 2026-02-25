@@ -44,6 +44,7 @@ class AIManager:
 
     def generate_comment(self, video_info: dict) -> str | None:
         if not self.is_comment_enabled():
+            logger.warning("[AI] 评论功能未启用")
             return None
 
         system_prompt = COMMENT_SYSTEM.format(
@@ -60,10 +61,12 @@ class AIManager:
         )
 
         raw = self.provider.chat(system_prompt, user_prompt)
+        logger.info(f"[AI] 原始回复: {raw[:200] if raw else 'None'}")
         if not raw:
             return None
 
         text = self._clean_comment(raw)
+        logger.info(f"[AI] 清洗后: {text[:100] if text else 'None'}")
         if not text:
             logger.warning(f"[AI] 评论清洗后为空，原始内容: {raw[:80]}")
             return None
