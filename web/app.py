@@ -126,11 +126,19 @@ from web.routers.module_router import router as module_router
 from web.routers.model_router_api import router as model_api_router
 from web.routers.browser_router import router as browser_api_router
 from web.routers.log_api import router as log_api_router
+from web.routers.config_api import router as config_api_router
+from web.routers.task_api import router as task_api_router
+from web.routers.auth_api import router as auth_api_router
+from web.routers.file_api import router as file_api_router
 from web.websocket.ws_handler import router as ws_router
 
 app.include_router(module_router, prefix="/api/modules", tags=["modules"])
 app.include_router(model_api_router, prefix="/api/models", tags=["models"])
 app.include_router(browser_api_router, prefix="/api/browsers", tags=["browsers"])
+app.include_router(config_api_router, prefix="/api/config", tags=["config"])
+app.include_router(task_api_router, prefix="/api/task", tags=["task"])
+app.include_router(auth_api_router, prefix="/api/auth", tags=["auth"])
+app.include_router(file_api_router, prefix="/api/file", tags=["file"])
 app.include_router(log_api_router)
 app.include_router(ws_router)
 

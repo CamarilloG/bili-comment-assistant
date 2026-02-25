@@ -24,7 +24,7 @@ if not exist "%PYTHON_EXE%" (
     REM 开发模式：若当前目录没有 web，则用上级或 gjm，确保能 import web
     if not exist "%APP_DIR%web\" (
         if exist "%ROOT%..\web\" set "APP_DIR=%ROOT%.."
-        else if exist "%ROOT%..\gjm\web\" set "APP_DIR=%ROOT%..\gjm"
+        if exist "%ROOT%..\gjm\web\" set "APP_DIR=%ROOT%..\gjm"
     )
     echo [INFO] Dev mode, APP_DIR=%APP_DIR%
 )
