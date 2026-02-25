@@ -149,10 +149,14 @@ def _redirect_root():
 
 panel_dir = os.path.join(os.path.dirname(__file__), "frontend-v2", "dist")
 if os.path.isdir(panel_dir):
-    app.mount("/panel", StaticFiles(directory=panel_dir, html=True), name="panel")
     @app.get("/panel/{path:path}", include_in_schema=False)
-    async def serve_spa(path: str):
+    async def serve_spa(path: str = ""):
+        import pathlib
+        file_path = pathlib.Path(panel_dir) / path
+        if path and file_path.is_file():
+            return FileResponse(file_path)
         return FileResponse(os.path.join(panel_dir, "index.html"))
+    app.mount("/panel", StaticFiles(directory=panel_dir, html=False), name="panel")
 else:
     logger.warning("frontend-v2/dist not found — run npm run build in web/frontend-v2")
 
