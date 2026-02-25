@@ -43,15 +43,28 @@ def fetch_top_comments(page: Page, url: str, max_count: int = DEFAULT_MAX_COMMEN
                 continue
 
         if not comments:
-            legacy = page.locator(".reply-content .reply-content-container .reply-content")
+            legacy = page.locator("#contents span, .reply-content .reply-content-container .reply-content")
             cnt = min(legacy.count(), max_count)
             for i in range(cnt):
                 try:
                     text = legacy.nth(i).inner_text(timeout=2000).strip()
-                    if text:
+                    if text and len(text) > 2:
                         comments.append(text[:200])
                 except Exception:
                     continue
+
+        if not comments:
+            content_div = page.locator("#content,#contents,.comment-list,.reply-list")
+            if content_div.count() > 0:
+                spans = content_div.first.locator("span")
+                cnt = min(spans.count(), max_count)
+                for i in range(cnt):
+                    try:
+                        text = spans.nth(i).inner_text(timeout=2000).strip()
+                        if text and len(text) > 2:
+                            comments.append(text[:200])
+                    except Exception:
+                        continue
 
         logger.debug(f"[VideoDetail] Fetched {len(comments)} comments from {url}")
         return comments[:max_count]
@@ -64,22 +77,34 @@ def fetch_related_titles(page: Page, max_count: int = DEFAULT_MAX_RELATED) -> Li
     """Extract related-video titles from the current page (call after page is loaded)."""
     titles: List[str] = []
     try:
-        cards = page.locator(
-            ".rec-list .video-page-card-small, "
-            ".recommend-list-v1 .video-page-card-small, "
-            ".rec-list-m .video-card"
-        )
-
-        page.wait_for_timeout(1000)
-        count = min(cards.count(), max_count)
-        for i in range(count):
-            try:
-                title_el = cards.nth(i).locator(".title, .info a[title]").first
-                text = (title_el.get_attribute("title") or title_el.inner_text(timeout=1000)).strip()
-                if text:
-                    titles.append(text)
-            except Exception:
-                continue
+        page.wait_for_timeout(1500)
+        
+        for scroll_attempt in range(2):
+            cards = page.locator(
+                ".rec-list .video-page-card-small, "
+                ".recommend-list-v1 .video-page-card-small, "
+                ".rec-list-m .video-card, "
+                ".recommend-list .video-card, "
+                ".video-page-card-small"
+            )
+            
+            page.wait_for_timeout(500)
+            count = min(cards.count(), max_count)
+            for i in range(count):
+                try:
+                    title_el = cards.nth(i).locator(".title, .info a[title], [title]").first
+                    text = (title_el.get_attribute("title") or title_el.inner_text(timeout=1000)).strip()
+                    if text and len(text) > 2:
+                        titles.append(text)
+                except Exception:
+                    continue
+            
+            if titles:
+                break
+                
+            if scroll_attempt == 0:
+                page.evaluate("window.scrollTo(0, document.body.scrollHeight * 0.7)")
+                page.wait_for_timeout(1000)
 
         logger.debug(f"[VideoDetail] Fetched {len(titles)} related titles")
     except Exception as e:

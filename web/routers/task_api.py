@@ -33,6 +33,14 @@ def _video_callback(video_info: dict):
             videos.append({**video_info, "status": "pending"})
 
 
+def _comment_callback(bv: str, comment: str):
+    with _state_lock:
+        for v in _task_state["comment"]["videos"]:
+            if v.get("bv") == bv:
+                v["comment"] = comment
+                break
+
+
 def _status_callback(bv: str, status: str):
     with _state_lock:
         for v in _task_state["comment"]["videos"]:
@@ -48,6 +56,7 @@ def _run_comment_task():
         backend_main.main(
             video_callback=_video_callback,
             status_callback=_status_callback,
+            comment_callback=_comment_callback,
         )
         with _state_lock:
             _task_state["comment"]["status"] = "completed"

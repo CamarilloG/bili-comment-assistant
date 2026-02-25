@@ -124,17 +124,17 @@ async function testConnection() {
       </label>
       <div class="space-y-3">
         <div>
-          <label class="text-xs text-gray-500">Base URL</label>
-          <input v-model="baseUrl" class="w-full border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 text-sm bg-transparent" />
+          <label class="text-xs text-gray-500">Base URL (固定)</label>
+          <input v-model="baseUrl" disabled class="w-full border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm bg-gray-50 dark:bg-gray-900 text-gray-400" />
         </div>
         <div>
-          <label class="text-xs text-gray-500">API Key</label>
-          <input v-model="apiKey" type="password" class="w-full border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 text-sm bg-transparent" />
+          <label class="text-xs text-gray-500">API Key (固定)</label>
+          <input v-model="apiKey" disabled type="password" class="w-full border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm bg-gray-50 dark:bg-gray-900 text-gray-400" />
         </div>
         <div class="grid grid-cols-3 gap-3">
           <div>
-            <label class="text-xs text-gray-500">模型名称</label>
-            <input v-model="model" class="w-full border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-1.5 text-sm bg-transparent" />
+            <label class="text-xs text-gray-500">模型名称 (固定)</label>
+            <input v-model="model" disabled class="w-full border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-1.5 text-sm bg-gray-50 dark:bg-gray-900 text-gray-400" />
           </div>
           <div>
             <label class="text-xs text-gray-500">超时(s)</label>

@@ -152,7 +152,7 @@ def get_browser_launch_args(config, force_headed=False):
     
     return launch_args
 
-def main(video_callback=None, status_callback=None):
+def main(video_callback=None, status_callback=None, comment_callback=None):
     global _current_manager
     reset_stop_flag()
 
@@ -195,7 +195,7 @@ def main(video_callback=None, status_callback=None):
         history_mgr = HistoryManager()
         captcha_tracker = CaptchaTracker()
         captcha_notifier = CaptchaNotifier()
-        ai_manager = AIManager(config)
+        ai_manager = AIManager(config, _stop_event)
         
         # 验证码冷却相关配置
         captcha_config = config.get("captcha", {})
@@ -386,6 +386,7 @@ def main(video_callback=None, status_callback=None):
                         status = "成功" if result == "success" else "失败"
                         log_comment_result(video_info, status, text, comment_source, toast_message)
                         if status_callback: status_callback(video_info['bv'], status)
+                        if comment_callback: comment_callback(video_info['bv'], text or "")
                         
                         if result == "success":
                             history_mgr.add(video_info['bv'])

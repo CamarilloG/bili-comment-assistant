@@ -25,10 +25,10 @@ def get_sensitivity_hint(sensitivity: int) -> str:
 
 class AIManager:
 
-    def __init__(self, config: dict):
+    def __init__(self, config: dict, stop_event=None):
         self.config = config
         ai_cfg = config.get("ai", {})
-        self.provider = AIProvider(config) if ai_cfg.get("enabled") else None
+        self.provider = AIProvider(config, stop_event) if ai_cfg.get("enabled") else None
         self._comment_cfg = ai_cfg.get("comment", {})
         self._filter_cfg = ai_cfg.get("filter", {})
 
