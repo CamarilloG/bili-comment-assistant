@@ -67,8 +67,17 @@ captcha_record.json
 debug_*.py
 OPTIMIZATION_SUMMARY.md
 
-# Config files
+# Config files (real config not committed; use config.template.yaml as example)
 config.yaml
+
+# Packaging / build (不提交打包与编译相关)
+build_exe.py
+build_portable.py
+run_portable.bat
+
+# Internal / irrelevant docs
+REFACTOR_PLAN.md
+OPTIMIZATION_PLAN.md
 
 # Playwright browsers
 .ms-playwright/

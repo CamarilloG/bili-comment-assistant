@@ -26,7 +26,7 @@ bili-comment-assistant/
 │   └── __init__.py
 ├── assets/                 # 资源文件
 ├── logs/                   # 日志目录
-├── config.yaml            # 配置文件
+├── config.template.yaml    # 配置文件示例（复制为 config.yaml 后使用）
 ├── gui.py                 # GUI界面
 ├── main.py                # 主程序
 ├── requirements.txt       # 依赖列表
@@ -47,7 +47,7 @@ pip install -r requirements.txt
 3. 将Cookie保存到`cookies.json`文件
 
 ### 2. 编辑配置文件
-编辑`config.yaml`文件，配置搜索关键词、评论内容等参数。
+首次使用请将 `config.template.yaml` 复制为 `config.yaml`，然后按需修改搜索关键词、评论内容、AI API Key 等参数。
 
 ### 3. 运行程序
 ```bash
