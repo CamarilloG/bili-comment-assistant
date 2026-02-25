@@ -48,7 +48,7 @@ class AIProvider:
         request_data = {
             "timestamp": timestamp,
             "model": self.model,
-            "base_url": self.client.base_url,
+            "base_url": str(self.client.base_url),
             "system_prompt": system_prompt,
             "user_prompt": user_prompt,
             "temperature": 0.8,
