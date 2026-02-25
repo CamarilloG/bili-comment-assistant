@@ -6,6 +6,7 @@ from typing import Any, Dict
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from utils.logger import get_logger
@@ -22,31 +23,14 @@ from modules.captcha_module import CaptchaModule
 from modules.config_module import ConfigModule
 from modules.notify_module import NotifyModule
 from modules.report_module import ReportModule
-from ai_center.event_bus import EventBus
-from ai_center.state_machine import TaskStateMachine
 from ai_center.model_router import ModelRouter, ModelRouterConfig, ProviderConfig, ModelRoute
-from ai_center.planner import Planner
-from ai_center.dispatcher import Dispatcher
-from ai_center.validator import Validator
-from ai_center.executor import Executor
-from ai_center.reporter import Reporter
 
 logger = get_logger()
 
-# Shared singletons
+# Shared singletons（仅保留 model_router，AI 中控台已废弃）
 registry = ModuleRegistry()
-event_bus = EventBus()
 browser_pool = BrowserPool()
 model_router = ModelRouter()
-
-planner: Planner | None = None
-dispatcher: Dispatcher | None = None
-validator: Validator | None = None
-executor: Executor | None = None
-reporter = Reporter()
-
-# Active sessions
-sessions: Dict[str, Any] = {}
 
 
 def _register_modules(config: Dict[str, Any] | None = None) -> None:
@@ -67,13 +51,12 @@ def _register_modules(config: Dict[str, Any] | None = None) -> None:
     registry.register("browser_pool", BrowserPoolModule(browser_pool))
 
 
-def _init_ai_center(config: Dict[str, Any] | None = None) -> None:
-    global planner, dispatcher, validator, executor
-
+def _init_model_router(config: Dict[str, Any] | None = None) -> None:
+    """配置 AI 模型路由（供评论生成等使用）。"""
     raw_key = config.get("ai", {}).get("api_key", "") if config else ""
     has_valid_key = bool(raw_key) and raw_key not in ("YOUR_API_KEY_HERE", "")
     if not has_valid_key:
-        logger.warning("AI api_key not configured — edit config.yaml to enable AI planning")
+        logger.warning("AI api_key not configured — edit config.yaml to enable AI features")
     if has_valid_key:
         ai_cfg = config["ai"]
         router_cfg = ModelRouterConfig(
@@ -87,25 +70,17 @@ def _init_ai_center(config: Dict[str, Any] | None = None) -> None:
                 ),
             },
             routes={
-                "planning": ModelRoute(primary_model="default"),
                 "comment_gen": ModelRoute(primary_model="default"),
                 "video_filter": ModelRoute(primary_model="default"),
-                "validation": ModelRoute(primary_model="default"),
                 "summarize": ModelRoute(primary_model="default"),
             },
         )
         model_router.update_config(router_cfg)
 
-    fsm = TaskStateMachine(event_bus)
-    planner = Planner(registry, model_router)
-    dispatcher = Dispatcher(registry, browser_pool, event_bus)
-    validator = Validator(model_router)
-    executor = Executor(planner, dispatcher, validator, event_bus, fsm)
-
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info("Starting AI Control Center...")
+    logger.info("Starting Control Center...")
     try:
         from core.config import ConfigValidator
         config = ConfigValidator.load_config()
@@ -113,7 +88,7 @@ async def lifespan(app: FastAPI):
         config = {}
 
     _register_modules(config)
-    _init_ai_center(config)
+    _init_model_router(config)
 
     pool_cfg = BrowserPoolConfig(
         headless=config.get("behavior", {}).get("headless", False),
@@ -128,12 +103,12 @@ async def lifespan(app: FastAPI):
     logger.info(f"Registered modules: {registry.list_ids()}")
     yield
 
-    logger.info("Shutting down AI Control Center...")
+    logger.info("Shutting down Control Center...")
     await browser_pool.shutdown()
 
 
 app = FastAPI(
-    title="Bilibili Comment Assistant — AI Control Center",
+    title="Bilibili Comment Assistant — Control Panel",
     version="1.0.0",
     lifespan=lifespan,
 )
@@ -146,31 +121,29 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Mount routers
-from web.routers.session_router import router as session_router
+# Mount routers（已移除 AI 中控台 session API）
 from web.routers.module_router import router as module_router
 from web.routers.model_router_api import router as model_api_router
 from web.routers.browser_router import router as browser_api_router
+from web.routers.log_api import router as log_api_router
 from web.websocket.ws_handler import router as ws_router
 
-app.include_router(session_router, prefix="/api/session", tags=["session"])
 app.include_router(module_router, prefix="/api/modules", tags=["modules"])
 app.include_router(model_api_router, prefix="/api/models", tags=["models"])
 app.include_router(browser_api_router, prefix="/api/browsers", tags=["browsers"])
+app.include_router(log_api_router)
 app.include_router(ws_router)
 
-# Redirect /panel and /panel/ to frontend root (for portable menu URL)
-@app.get("/panel")
-@app.get("/panel/")
-def _redirect_panel():
-    from fastapi.responses import RedirectResponse
-    return RedirectResponse(url="/", status_code=302)
+# 仅挂载 Vue 控制面板（已废弃 AI 中控台，不再挂载 web/frontend）
+@app.get("/", include_in_schema=False)
+def _redirect_root():
+    return RedirectResponse(url="/panel/", status_code=302)
 
-
-# Serve frontend static files
-frontend_dir = os.path.join(os.path.dirname(__file__), "frontend")
-if os.path.isdir(frontend_dir):
-    app.mount("/", StaticFiles(directory=frontend_dir, html=True), name="frontend")
+panel_dir = os.path.join(os.path.dirname(__file__), "frontend-v2", "dist")
+if os.path.isdir(panel_dir):
+    app.mount("/panel", StaticFiles(directory=panel_dir, html=True), name="panel")
+else:
+    logger.warning("frontend-v2/dist not found — run npm run build in web/frontend-v2")
 
 
 def start_web_server(host: str = "0.0.0.0", port: int = 8080) -> None:

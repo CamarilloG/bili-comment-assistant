@@ -3,5 +3,5 @@ pyyaml
 loguru
 ttkbootstrap
 fastapi
-uvicorn
+uvicorn[standard]
 openai>=1.0.0

@@ -25,6 +25,7 @@ class AITab(ttk.Frame):
         self.max_length_var = tk.IntVar(value=100)
 
         self.filter_enabled_var = tk.BooleanVar(value=True)
+        self.sensitivity_var = tk.IntVar(value=50)
 
         self.setup_ui()
         self.load_config()
@@ -93,9 +94,26 @@ class AITab(ttk.Frame):
         self.criteria_text = tk.Text(filter_group, height=3, width=40)
         self.criteria_text.grid(row=1, column=1, sticky=EW, padx=5, pady=3)
 
+        sensitivity_frame = ttk.Frame(filter_group)
+        sensitivity_frame.grid(row=2, column=0, columnspan=2, sticky=EW, pady=6)
+        ttk.Label(sensitivity_frame, text="宽松(1)").pack(side=LEFT, padx=(0, 4))
+        self.sensitivity_scale = ttk.Scale(
+            sensitivity_frame, from_=1, to=100, variable=self.sensitivity_var,
+            command=self._on_sensitivity_change, bootstyle="info",
+        )
+        self.sensitivity_scale.pack(side=LEFT, fill=X, expand=YES)
+        ttk.Label(sensitivity_frame, text="严格(100)").pack(side=LEFT, padx=(4, 0))
+        self.sensitivity_label = ttk.Label(sensitivity_frame, text="50", width=4, anchor="center", bootstyle="info")
+        self.sensitivity_label.pack(side=LEFT, padx=(6, 0))
+
         btn_frame = ttk.Frame(container)
         btn_frame.pack(fill=X, pady=12)
         ttk.Button(btn_frame, text="保存配置", command=self.save_config, bootstyle="success", width=14).pack(side=LEFT)
+
+    def _on_sensitivity_change(self, value):
+        int_val = int(float(value))
+        self.sensitivity_var.set(int_val)
+        self.sensitivity_label.config(text=str(int_val))
 
     def load_config(self):
         if not os.path.exists(self.config_file):
@@ -126,6 +144,9 @@ class AITab(ttk.Frame):
             criteria = filt.get('criteria', '')
             if criteria:
                 self.criteria_text.insert("1.0", criteria)
+            sens = max(1, min(100, int(filt.get('sensitivity', 50))))
+            self.sensitivity_var.set(sens)
+            self.sensitivity_label.config(text=str(sens))
         except Exception as e:
             logger.error(f"AI Config Load Error: {e}")
 
@@ -153,6 +174,7 @@ class AITab(ttk.Frame):
                 'filter': {
                     'enabled': self.filter_enabled_var.get(),
                     'criteria': self.criteria_text.get("1.0", tk.END).strip(),
+                    'sensitivity': self.sensitivity_var.get(),
                 },
             }
 

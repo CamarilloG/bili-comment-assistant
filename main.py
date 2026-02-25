@@ -267,6 +267,24 @@ def main(video_callback=None, status_callback=None):
                         if video_callback: video_callback(video_info)
                         if status_callback: status_callback(video_info['bv'], "处理中...")
                         
+                        # Fetch extended context for AI if enabled
+                        filter_cfg = config.get("ai", {}).get("filter", {})
+                        if (ai_manager.is_filter_enabled() or ai_manager.is_comment_enabled()) and \
+                                (filter_cfg.get("use_comments") or filter_cfg.get("use_related")):
+                            from core.video_detail import fetch_top_comments, fetch_related_titles, truncate_comments
+                            if filter_cfg.get("use_comments"):
+                                raw_comments = fetch_top_comments(
+                                    comment_page, video_info['url'],
+                                    max_count=filter_cfg.get("max_comments", 10),
+                                )
+                                video_info["top_comments"] = truncate_comments(raw_comments)
+                            if filter_cfg.get("use_related"):
+                                related = fetch_related_titles(
+                                    comment_page,
+                                    max_count=filter_cfg.get("max_related", 5),
+                                )
+                                video_info["related_titles"] = "\n".join(related) if related else "(无)"
+
                         if ai_manager.is_filter_enabled():
                             keep, reason = ai_manager.check_video_relevance(video_info)
                             if not keep:
