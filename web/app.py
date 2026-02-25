@@ -6,7 +6,7 @@ from typing import Any, Dict
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from utils.logger import get_logger
@@ -150,6 +150,9 @@ def _redirect_root():
 panel_dir = os.path.join(os.path.dirname(__file__), "frontend-v2", "dist")
 if os.path.isdir(panel_dir):
     app.mount("/panel", StaticFiles(directory=panel_dir, html=True), name="panel")
+    @app.get("/panel/{path:path}", include_in_schema=False)
+    async def serve_spa(path: str):
+        return FileResponse(os.path.join(panel_dir, "index.html"))
 else:
     logger.warning("frontend-v2/dist not found — run npm run build in web/frontend-v2")
 
