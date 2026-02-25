@@ -26,6 +26,21 @@ class AIProvider:
         self.model = ai_cfg.get("model", "deepseek-chat")
         self.max_retries = ai_cfg.get("max_retries", 2)
 
+    def _is_reasoning_model(self) -> bool:
+        """判断是否为推理模型"""
+        return "reasoner" in self.model.lower()
+
+    def _extract_content(self, message) -> str | None:
+        """提取消息内容，支持推理模型和对话模型"""
+        # 推理模型(如 deepseek-reasoner)的回复在 reasoning_content 字段
+        # 对话模型(如 deepseek-chat)的回复在 content 字段
+        if self._is_reasoning_model():
+            reasoning = getattr(message, 'reasoning_content', None)
+            if reasoning:
+                return reasoning
+        content = getattr(message, 'content', None)
+        return content
+
     def chat(self, system_prompt: str, user_prompt: str) -> str | None:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         log_file = os.path.join(_get_log_dir(), f"ai_request_{timestamp}.json")
@@ -84,12 +99,13 @@ class AIProvider:
                     return None
                     
                 msg = resp.choices[0].message
-                content = msg.content
+                content = self._extract_content(msg)
                 
                 response_data["choices"].append({
                     "message": {
                         "role": msg.role,
-                        "content": msg.content,
+                        "content": getattr(msg, 'content', None),
+                        "reasoning_content": getattr(msg, 'reasoning_content', None),
                     },
                     "finish_reason": resp.choices[0].finish_reason,
                 })
