@@ -31,14 +31,25 @@ class AIProvider:
                     max_tokens=256,
                 )
                 elapsed = time.time() - start
-                content = resp.choices[0].message.content.strip() if resp.choices else None
                 usage = resp.usage
                 logger.info(
                     f"[AI] 耗时 {elapsed:.1f}s | "
                     f"tokens: {usage.prompt_tokens}+{usage.completion_tokens}={usage.total_tokens}"
                     if usage else f"[AI] 耗时 {elapsed:.1f}s"
                 )
-                return content
+                
+                if not resp.choices:
+                    logger.warning("[AI] 响应中没有 choices")
+                    return None
+                    
+                msg = resp.choices[0].message
+                content = msg.content
+                
+                if content is None:
+                    logger.warning(f"[AI] message.content 为 None，reason: {msg}")
+                    return None
+                    
+                return content.strip()
             except Exception as e:
                 logger.warning(f"[AI] 调用失败 (第{attempt}次): {e}")
                 if attempt > self.max_retries:
