@@ -4,10 +4,11 @@ import os
 from typing import Any, Dict
 
 import yaml
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
-from core.config import ConfigValidator, DEFAULT_CONFIG_PATH
+from core.config import ConfigValidator
+from core.slot import get_config_path, ensure_slot_dir
 from utils.logger import get_logger
 
 logger = get_logger()
@@ -40,9 +41,11 @@ def _read_raw_config(path: str | None = None) -> Dict[str, Any]:
 
 
 @router.get("")
-async def get_config():
+async def get_config(slot: str = Query("0", alias="slot")):
     try:
-        config = _read_raw_config()
+        ensure_slot_dir(slot)
+        path = get_config_path(slot)
+        config = _read_raw_config(path)
         if "ai" in config and config["ai"].get("api_key"):
             masked = config["ai"]["api_key"]
             if masked not in ("", "YOUR_API_KEY_HERE"):
@@ -53,9 +56,10 @@ async def get_config():
 
 
 @router.put("")
-async def update_config(body: ConfigUpdateBody):
+async def update_config(body: ConfigUpdateBody, slot: str = Query("0", alias="slot")):
     try:
-        path = os.path.abspath(DEFAULT_CONFIG_PATH)
+        ensure_slot_dir(slot)
+        path = os.path.abspath(get_config_path(slot))
         existing = _read_raw_config(path)
 
         incoming = body.config

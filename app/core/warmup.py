@@ -31,6 +31,19 @@ class WarmupManager:
         Returns True if interrupted (should stop), False if completed normally."""
         return self._stop_event.wait(seconds)
 
+    def _wait_captcha_resolved(self, page: Page, detail_url: str = "") -> bool:
+        """检测到验证码时：停止操作，原地轮询等待用户解决；解决后返回 True，若收到停止信号返回 False。"""
+        notified = False
+        while self.running and check_captcha_on_page(page):
+            if not notified:
+                logger.warning("[养号] 检测到验证码，已停止操作，请在弹出的页面中完成验证...")
+                if self.captcha_notifier:
+                    self.captcha_notifier.notify_captcha_alert("warmup", detail_url or page.url or "")
+                notified = True
+            if self._interruptible_sleep(5):
+                return False
+        return True
+
     def run(self, status_callback=None, duration_override: int = None):
         """Main loop for warmup task
 
@@ -60,11 +73,9 @@ class WarmupManager:
                     page.goto("https://www.bilibili.com", wait_until="domcontentloaded", timeout=60000)
                 
                 if check_captcha_on_page(page):
-                    logger.error("[养号] 检测到验证码，退出养号流程")
-                    if self.captcha_notifier:
-                        self.captcha_notifier.notify_captcha_alert("warmup", page.url)
-                    self.running = False
-                    break
+                    if not self._wait_captcha_resolved(page, page.url):
+                        break
+                    logger.info("验证码已解决，继续养号...")
                 
                 video_cards = self._wait_for_video_cards(page)
                 
@@ -213,11 +224,9 @@ class WarmupManager:
         page.goto(url, wait_until="domcontentloaded")
         if self._interruptible_sleep(3): return
         if check_captcha_on_page(page):
-            logger.error("[养号] 观看页检测到验证码，退出")
-            if self.captcha_notifier:
-                self.captcha_notifier.notify_captcha_alert("warmup", page.url or url)
-            self.running = False
-            return
+            if not self._wait_captcha_resolved(page, page.url or url):
+                return
+            logger.info("验证码已解决，继续观看...")
         
         watch_min = self.warmup_config.get('behavior', {}).get('watch_time_min', 20)
         watch_max = self.warmup_config.get('behavior', {}).get('watch_time_max', 240)
@@ -250,11 +259,9 @@ class WarmupManager:
         
         while self.running and elapsed < watch_duration:
             if check_captcha_on_page(page):
-                logger.error("[养号] 观看中检测到验证码，退出")
-                if self.captcha_notifier:
-                    self.captcha_notifier.notify_captcha_alert("warmup", page.url or url)
-                self.running = False
-                break
+                if not self._wait_captcha_resolved(page, page.url or url):
+                    break
+                logger.info("验证码已解决，继续观看...")
             # Update status periodically
             if status_callback:
                 status_callback(

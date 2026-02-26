@@ -1,7 +1,11 @@
 import sys
 import os
 import re
+import contextvars
 from loguru import logger
+
+# 多槽位：任务线程内设置后，该线程产生的运行日志会带 slot_id，用于前端按实例展示
+slot_id_ctx: contextvars.ContextVar[str | None] = contextvars.ContextVar("slot_id", default=None)
 
 if not os.path.exists("logs"):
     os.makedirs("logs")

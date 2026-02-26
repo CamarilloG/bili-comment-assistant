@@ -1,10 +1,12 @@
 <script setup>
 import { ref, onMounted, watch } from 'vue'
 import { useConfigStore } from '../stores/config'
+import { useSlotStore } from '../stores/slot'
 import { useAlertModalStore } from '../stores/alertModal'
 import { authApi, fileApi } from '../api'
 
 const configStore = useConfigStore()
+const slotStore = useSlotStore()
 const alertModal = useAlertModalStore()
 
 const browserPath = ref('')
@@ -34,7 +36,7 @@ async function saveConfig() {
     await configStore.save({
       browser: { path: browserPath.value, port: Number(browserPort.value) },
       behavior: { headless: headless.value },
-    })
+    }, slotStore.currentSlot)
     alertModal.success('基础设置已保存')
   } catch (e) {
     const msg = e?.response?.data?.detail || e?.message || String(e)
@@ -56,7 +58,7 @@ async function browseExe() {
 async function checkAuth() {
   loginChecking.value = true
   try {
-    const { data } = await authApi.status()
+    const { data } = await authApi.status(slotStore.currentSlot)
     loginStatus.value = data.logged_in
   } catch { loginStatus.value = null }
   loginChecking.value = false
@@ -64,16 +66,16 @@ async function checkAuth() {
 
 async function doCheckLogin() {
   loginChecking.value = true
-  await authApi.check()
+  await authApi.check(slotStore.currentSlot)
   setTimeout(async () => {
-    const { data } = await authApi.status()
+    const { data } = await authApi.status(slotStore.currentSlot)
     loginStatus.value = data.logged_in
     loginChecking.value = false
   }, 8000)
 }
 
 async function doQrLogin() {
-  await authApi.startQrLogin()
+  await authApi.startQrLogin(slotStore.currentSlot)
 }
 </script>
 

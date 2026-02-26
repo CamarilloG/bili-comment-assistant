@@ -1,10 +1,12 @@
 <script setup>
 import { ref, onMounted, watch } from 'vue'
 import { useConfigStore } from '../stores/config'
+import { useSlotStore } from '../stores/slot'
 import { useAlertModalStore } from '../stores/alertModal'
 import { fileApi } from '../api'
 
 const configStore = useConfigStore()
+const slotStore = useSlotStore()
 const alertModal = useAlertModalStore()
 
 const keywords = ref('')
@@ -98,7 +100,7 @@ async function saveConfig() {
         max_delay: Number(maxDelay.value),
         timeout: Number(timeout.value),
       },
-    })
+    }, slotStore.currentSlot)
     alertModal.success('评论设置已保存')
   } catch (e) {
     const msg = e?.response?.data?.detail || e?.message || String(e)

@@ -3,33 +3,42 @@ from __future__ import annotations
 import asyncio
 import queue
 import threading
+from typing import Dict, List
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-from utils.logger import get_logger, sanitize_log
+from utils.logger import get_logger, sanitize_log, slot_id_ctx
 
 logger = get_logger()
 router = APIRouter()
 
-_log_subscribers: list[queue.Queue] = []
+# 按槽位：slot_id -> list of queues，仅该槽位的订阅者收到该槽位的运行日志
+_log_subscribers: Dict[str, List[queue.Queue]] = {}
 _log_lock = threading.Lock()
 
 
-def broadcast_log(message: str):
+def broadcast_log(message: str, slot_id: str | None = None):
+    """推送一条运行日志。slot_id 为 None 时从当前上下文取，取不到则视为 "0"。"""
+    if slot_id is None:
+        try:
+            slot_id = slot_id_ctx.get() or "0"
+        except LookupError:
+            slot_id = "0"
     with _log_lock:
+        queues = _log_subscribers.get(slot_id, [])
         dead = []
-        for q in _log_subscribers:
+        for q in queues:
             try:
                 q.put_nowait(message)
             except queue.Full:
                 dead.append(q)
         for q in dead:
-            _log_subscribers.remove(q)
+            queues.remove(q)
 
 
 def _install_log_hook():
     """Install loguru sink that broadcasts to WebSocket for 按字段着色.
-    使用 Tab 分隔 time/level/message，避免 format_map 解析 JSON 大括号导致 KeyError。
+    使用 Tab 分隔 time/level/message；按 slot_id_ctx 将日志投递到对应槽位订阅者。
     """
     from loguru import logger as loguru_logger
 
@@ -41,7 +50,7 @@ def _install_log_hook():
         return f"{time_str}\t{level_name}\t{msg}"
 
     def _ws_sink(message):
-        broadcast_log(str(message).rstrip())
+        broadcast_log(str(message).rstrip(), slot_id=None)
 
     loguru_logger.add(
         _ws_sink,
@@ -54,12 +63,23 @@ def _install_log_hook():
 _install_log_hook()
 
 
+def _get_slot_from_scope(scope: dict) -> str:
+    qs = (scope.get("query_string") or "").decode() if isinstance(scope.get("query_string"), bytes) else (scope.get("query_string") or "")
+    for part in qs.split("&"):
+        if "=" in part:
+            k, v = part.split("=", 1)
+            if k.strip().lower() == "slot":
+                return (v.strip() or "0") or "0"
+    return "0"
+
+
 @router.websocket("/ws/logs")
 async def ws_logs(websocket: WebSocket):
     await websocket.accept()
+    slot = _get_slot_from_scope(websocket.scope)
     q: queue.Queue = queue.Queue(maxsize=512)
     with _log_lock:
-        _log_subscribers.append(q)
+        _log_subscribers.setdefault(slot, []).append(q)
 
     try:
         while True:
@@ -74,5 +94,6 @@ async def ws_logs(websocket: WebSocket):
         pass
     finally:
         with _log_lock:
-            if q in _log_subscribers:
-                _log_subscribers.remove(q)
+            lst = _log_subscribers.get(slot, [])
+            if q in lst:
+                lst.remove(q)

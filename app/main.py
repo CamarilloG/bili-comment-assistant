@@ -19,11 +19,14 @@ from utils.logger import get_logger
 from utils.date_parser import parse_bilibili_date
 from server.api import start_server
 from core.context import context as global_context
+from core.slot import get_workdir, get_config_path, get_cookie_path, get_comment_log_path, ensure_slot_dir
+from utils.logger import slot_id_ctx
 
 logger = get_logger()
 
-_stop_event = threading.Event()
-_current_manager = None
+_slot_stop_events = {}
+_slot_managers = {}
+_slot_lock = threading.Lock()
 _server_started = False
 
 def start_api_server():
@@ -42,22 +45,41 @@ def is_api_server_started():
     """Whether the debug API server has been started (e.g. by user clicking 开启调试模式)."""
     return _server_started
 
-def stop_task():
-    global _current_manager
-    _stop_event.set()
-    if _current_manager:
-        _current_manager.stop()
-    logger.info("收到停止信号。")
+def stop_task(slot_id: str = "0"):
+    with _slot_lock:
+        ev = _slot_stop_events.get(slot_id)
+        mgr = _slot_managers.get(slot_id)
+    if ev:
+        ev.set()
+    if mgr:
+        mgr.stop()
+    logger.info(f"[slot={slot_id}] 收到停止信号。")
 
-def reset_stop_flag():
-    global _current_manager
-    _stop_event.clear()
-    _current_manager = None
 
-def log_comment_result(video_info, status, comment_text, source="Template", toast_message=""):
-    file_exists = os.path.isfile('comment_log.csv')
+def _get_stop_event(slot_id: str) -> threading.Event:
+    with _slot_lock:
+        if slot_id not in _slot_stop_events:
+            _slot_stop_events[slot_id] = threading.Event()
+        return _slot_stop_events[slot_id]
+
+
+def _set_manager(slot_id: str, manager):
+    with _slot_lock:
+        _slot_managers[slot_id] = manager
+
+
+def _clear_manager(slot_id: str):
+    with _slot_lock:
+        _slot_managers.pop(slot_id, None)
+        ev = _slot_stop_events.get(slot_id)
+        if ev:
+            ev.clear()
+
+def log_comment_result(video_info, status, comment_text, source="Template", toast_message="", comment_log_path=None):
+    path = comment_log_path or "comment_log.csv"
+    file_exists = os.path.isfile(path)
     try:
-        with open('comment_log.csv', 'a', newline='', encoding='utf-8-sig') as f:
+        with open(path, 'a', newline='', encoding='utf-8-sig') as f:
             writer = csv.writer(f)
             if not file_exists:
                 writer.writerow(['Time', 'BV', 'Title', 'Author', 'Status', 'Comment', 'Source', 'Toast'])
@@ -152,12 +174,26 @@ def get_browser_launch_args(config, force_headed=False):
     
     return launch_args
 
-def main(video_callback=None, status_callback=None):
-    global _current_manager
-    reset_stop_flag()
+def main(video_callback=None, status_callback=None, workdir=None, slot_id="0"):
+    workdir = workdir or get_workdir(slot_id)
+    ensure_slot_dir(slot_id)
+    stop_ev = _get_stop_event(slot_id)
+    _slot_token = slot_id_ctx.set(slot_id)
+    try:
+        _run_main(video_callback, status_callback, workdir, slot_id, stop_ev)
+    finally:
+        slot_id_ctx.reset(_slot_token)
+
+
+def _run_main(video_callback, status_callback, workdir, slot_id, stop_ev):
+    stop_ev.clear()
+    config_path = get_config_path(slot_id)
+    cookie_path = get_cookie_path(slot_id)
+    comment_log_path = get_comment_log_path(slot_id)
+    history_path = os.path.join(workdir, "history.json")
 
     try:
-        config = ConfigValidator.load_config()
+        config = ConfigValidator.load_config(config_path)
     except Exception as e:
         logger.error(f"Configuration error: {e}")
         return
@@ -178,7 +214,7 @@ def main(video_callback=None, status_callback=None):
         )
         context.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
         
-        auth = AuthManager(context, config["account"]["cookie_file"])
+        auth = AuthManager(context, cookie_path)
         if not auth.login():
             logger.error("登录失败。正在退出。")
             browser.close()
@@ -192,7 +228,7 @@ def main(video_callback=None, status_callback=None):
         
         search_mgr = SearchManager(search_page)
         comment_mgr = CommentManager(comment_page)
-        history_mgr = HistoryManager()
+        history_mgr = HistoryManager(file_path=history_path)
         captcha_tracker = CaptchaTracker()
         captcha_notifier = CaptchaNotifier()
         ai_manager = AIManager(config)
@@ -213,12 +249,12 @@ def main(video_callback=None, status_callback=None):
         warmup_mgr = None  # lazy-loaded for captcha cooldown and interval warmup
 
         for keyword in keywords:
-            if _stop_event.is_set() or captcha_terminated: break
+            if stop_ev.is_set() or captcha_terminated: break
             if total_success >= target_count: break
             logger.info(f"正在处理关键词: {keyword}")
             is_first_page = True
             
-            while total_success < target_count and not _stop_event.is_set() and not captcha_terminated:
+            while total_success < target_count and not stop_ev.is_set() and not captcha_terminated:
                 strategy_config = config["search"].get("strategy", {})
                 selection_mode = strategy_config.get("selection", "order")
                 strict_match = strategy_config.get("strict_title_match", False)
@@ -263,7 +299,7 @@ def main(video_callback=None, status_callback=None):
                 if candidate_videos:
                     if selection_mode == "random": random.shuffle(candidate_videos)
                     for video_info in candidate_videos:
-                        if _stop_event.is_set() or total_success >= target_count or captcha_terminated: break
+                        if stop_ev.is_set() or total_success >= target_count or captcha_terminated: break
                         if video_callback: video_callback(video_info)
                         if status_callback: status_callback(video_info['bv'], "处理中...")
                         
@@ -305,17 +341,29 @@ def main(video_callback=None, status_callback=None):
                         image_path = None
                         if ai_manager.is_comment_enabled():
                             ai_comment_cfg = config.get("ai", {}).get("comment", {})
-                            if ai_comment_cfg.get("enable_image", False) and ai_comment_cfg.get("images"):
-                                image_path = random.choice(ai_comment_cfg["images"])
+                            ai_imgs = ai_comment_cfg.get("images")
+                            if isinstance(ai_imgs, str) and ai_imgs.strip():
+                                ai_imgs = [ai_imgs.strip()]
+                            elif not isinstance(ai_imgs, list):
+                                ai_imgs = []
+                            if ai_comment_cfg.get("enable_image", False) and ai_imgs:
+                                image_path = random.choice(ai_imgs)
                         else:
-                            if config["comment"].get("enable_image", False) and config["comment"].get("images"):
-                                image_path = random.choice(config["comment"]["images"])
+                            comment_imgs = config["comment"].get("images")
+                            if isinstance(comment_imgs, str) and comment_imgs.strip():
+                                comment_imgs = [comment_imgs.strip()]
+                            elif not isinstance(comment_imgs, list):
+                                comment_imgs = []
+                            if config["comment"].get("enable_image", False) and comment_imgs:
+                                image_path = random.choice(comment_imgs)
+                        if image_path and workdir and not os.path.isabs(image_path):
+                            image_path = os.path.join(workdir, image_path)
                         result, toast_message = comment_mgr.post_comment(video_info['url'], text, image_path)
                         
                         # ===== 验证码冷却流程 =====
                         if result == "captcha":
                             captcha_notifier.notify_captcha_alert("comment", video_info.get("bv") or video_info.get("url", ""))
-                            log_comment_result(video_info, "验证码拦截", text, comment_source, toast_message)
+                            log_comment_result(video_info, "验证码拦截", text, comment_source, toast_message, comment_log_path=comment_log_path)
                             if status_callback: status_callback(video_info['bv'], "验证码拦截", comment_content=text, comment_type=comment_source)
                             
                             # 1. 记录并获取今日累计次数
@@ -336,7 +384,7 @@ def main(video_callback=None, status_callback=None):
                             # 5. 静默等待
                             logger.info(f"[风控冷却] 开始静默等待 {captcha_quiet_minutes} 分钟...")
                             if status_callback: status_callback(video_info['bv'], f"静默等待{captcha_quiet_minutes}分钟", comment_content=text, comment_type=comment_source)
-                            if _stop_event.wait(captcha_quiet_minutes * 60):
+                            if stop_ev.wait(captcha_quiet_minutes * 60):
                                 logger.info("静默等待期间收到停止信号，终止任务。")
                                 break
                             
@@ -346,12 +394,12 @@ def main(video_callback=None, status_callback=None):
                             try:
                                 if warmup_mgr is None:
                                     warmup_mgr = WarmupManager(context, config, captcha_notifier)
-                                _current_manager = warmup_mgr
+                                _set_manager(slot_id, warmup_mgr)
                                 warmup_mgr.run(duration_override=cooldown_minutes)
                             except Exception as e:
                                 logger.error(f"冷却养号过程出错: {e}")
                             finally:
-                                _current_manager = None
+                                _clear_manager(slot_id)
                             
                             # 7. 增大后续评论间隔
                             delay_multiplier *= 1.5
@@ -364,7 +412,7 @@ def main(video_callback=None, status_callback=None):
                         if result == "cd_limit":
                             cd_start_time = datetime.now()
                             logger.error(f"[风控CD] 首条CD限制消息时间: {cd_start_time.strftime('%Y-%m-%d %H:%M:%S')}")
-                            log_comment_result(video_info, "CD限制", text, comment_source, toast_message)
+                            log_comment_result(video_info, "CD限制", text, comment_source, toast_message, comment_log_path=comment_log_path)
                             if status_callback: status_callback(video_info['bv'], "CD限制", comment_content=text, comment_type=comment_source)
                             
                             # 记录CD状态并进入养号模式
@@ -373,12 +421,12 @@ def main(video_callback=None, status_callback=None):
                             try:
                                 if warmup_mgr is None:
                                     warmup_mgr = WarmupManager(context, config, captcha_notifier)
-                                _current_manager = warmup_mgr
+                                _set_manager(slot_id, warmup_mgr)
                                 warmup_mgr.run(duration_override=60)
                             except Exception as e:
                                 logger.error(f"CD养号过程出错: {e}")
                             finally:
-                                _current_manager = None
+                                _clear_manager(slot_id)
                             
                             # 增大延迟倍率
                             delay_multiplier *= 2.0
@@ -388,7 +436,7 @@ def main(video_callback=None, status_callback=None):
                         
                         # ===== 正常评论结果处理 =====
                         status = "成功" if result == "success" else "失败"
-                        log_comment_result(video_info, status, text, comment_source, toast_message)
+                        log_comment_result(video_info, status, text, comment_source, toast_message, comment_log_path=comment_log_path)
                         if status_callback: status_callback(video_info['bv'], status, comment_content=text, comment_type=comment_source)
                         
                         if result == "success":
@@ -404,18 +452,18 @@ def main(video_callback=None, status_callback=None):
                             try:
                                 if warmup_mgr is None:
                                     warmup_mgr = WarmupManager(context, config, captcha_notifier)
-                                _current_manager = warmup_mgr
+                                _set_manager(slot_id, warmup_mgr)
                                 warmup_mgr.run(duration_override=delay / 60)
                             except Exception as e:
                                 logger.error(f"间隔养号出错: {e}")
                             finally:
-                                _current_manager = None
-                            if _stop_event.is_set():
+                                _clear_manager(slot_id)
+                            if stop_ev.is_set():
                                 logger.info("养号期间收到停止信号，终止任务。")
                                 break
                         else:
                             logger.info(f"评论间隔延迟: 等待 {delay:.1f} 秒后继续下一个视频...{' (间隔已因风控增大)' if delay_multiplier > 1.0 else ''}")
-                            if _stop_event.wait(delay):
+                            if stop_ev.wait(delay):
                                 logger.info("延迟期间收到停止信号，终止任务。")
                                 break
                 
@@ -427,12 +475,24 @@ def main(video_callback=None, status_callback=None):
             logger.info(f"所有任务已完成。本次成功评论: {total_success}/{target_count}")
         browser.close()
 
-def run_warmup(status_callback=None):
-    global _current_manager
-    reset_stop_flag()
+def run_warmup(status_callback=None, workdir=None, slot_id="0"):
+    workdir = workdir or get_workdir(slot_id)
+    ensure_slot_dir(slot_id)
+    stop_ev = _get_stop_event(slot_id)
+    _slot_token = slot_id_ctx.set(slot_id)
+    try:
+        _run_warmup_impl(status_callback, workdir, slot_id, stop_ev)
+    finally:
+        slot_id_ctx.reset(_slot_token)
+
+
+def _run_warmup_impl(status_callback, workdir, slot_id, stop_ev):
+    stop_ev.clear()
+    config_path = get_config_path(slot_id)
+    cookie_path = get_cookie_path(slot_id)
 
     try:
-        config = ConfigValidator.load_config()
+        config = ConfigValidator.load_config(config_path)
     except Exception as e:
         logger.error(f"Configuration error: {e}")
         return
@@ -455,14 +515,18 @@ def run_warmup(status_callback=None):
         )
         context.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
         
-        auth = AuthManager(context, config["account"]["cookie_file"])
+        auth = AuthManager(context, cookie_path)
         if not auth.login():
             logger.error("登录失败。正在退出。")
             browser.close()
             return
 
-        _current_manager = WarmupManager(context, config, CaptchaNotifier())
-        _current_manager.run(status_callback=status_callback)
+        warmup_mgr = WarmupManager(context, config, CaptchaNotifier())
+        _set_manager(slot_id, warmup_mgr)
+        try:
+            warmup_mgr.run(status_callback=status_callback)
+        finally:
+            _clear_manager(slot_id)
         
         browser.close()
 

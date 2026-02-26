@@ -1,9 +1,11 @@
 <script setup>
 import { ref, onMounted, watch } from 'vue'
 import { useConfigStore } from '../stores/config'
+import { useSlotStore } from '../stores/slot'
 import { useAlertModalStore } from '../stores/alertModal'
 
 const configStore = useConfigStore()
+const slotStore = useSlotStore()
 const alertModal = useAlertModalStore()
 
 const durationMinutes = ref(30)
@@ -65,7 +67,7 @@ async function saveConfig() {
         },
         source: source.value,
       },
-    })
+    }, slotStore.currentSlot)
     alertModal.success('养号设置已保存')
   } catch (e) {
     const msg = e?.response?.data?.detail || e?.message || String(e)

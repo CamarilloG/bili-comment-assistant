@@ -15,6 +15,7 @@ app/cookies.json
 app/comment_log.csv
 app/history.json
 app/login_qrcode.png
+app/instances/
 .env
 *.local
 

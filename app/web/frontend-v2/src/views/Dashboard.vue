@@ -3,11 +3,13 @@ import { ref, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useConfigStore } from '../stores/config'
 import { useTaskStore } from '../stores/task'
+import { useSlotStore } from '../stores/slot'
 import { taskApi, authApi } from '../api'
 
 const router = useRouter()
 const configStore = useConfigStore()
 const taskStore = useTaskStore()
+const slotStore = useSlotStore()
 
 const mode = ref('comment')
 const loginStatus = ref(null)
@@ -16,41 +18,49 @@ const isCommentRunning = computed(() => taskStore.isCommentRunning)
 const isWarmupRunning = computed(() => taskStore.isWarmupRunning)
 const isAnyRunning = computed(() => taskStore.isAnyRunning)
 const videos = computed(() => taskStore.commentStatus.videos || [])
+// 直接使用当前实例的日志数组，避免 setLogsForCurrentSlot 与 WS 写入不同步导致不更新
+const displayLogs = computed(() => taskStore.logsBySlot[slotStore.currentSlot] || [])
 
 watch(() => configStore.config, (c) => {
   if (!c) return
   checkAuth()
 }, { immediate: true })
 
+watch(() => slotStore.currentSlot, () => {
+  checkAuth()
+})
+
 async function checkAuth() {
   try {
-    const { data } = await authApi.status()
+    const { data } = await authApi.status(slotStore.currentSlot)
     loginStatus.value = data.logged_in
   } catch { loginStatus.value = null }
 }
 
 async function startTask() {
   if (isAnyRunning.value) return
+  const slot = slotStore.currentSlot
 
   if (mode.value === 'comment') {
-    await configStore.save({ ai: { comment: { enabled: false } } })
-    await taskApi.startComment()
+    await configStore.save({ ai: { comment: { enabled: false } } }, slot)
+    await taskApi.startComment(slot)
   } else if (mode.value === 'ai_comment') {
-    await configStore.save({ ai: { comment: { enabled: true } } })
-    await taskApi.startComment()
+    await configStore.save({ ai: { comment: { enabled: true } } }, slot)
+    await taskApi.startComment(slot)
   } else if (mode.value === 'warmup') {
-    await taskApi.startWarmup()
+    await taskApi.startWarmup(slot)
   }
 
-  taskStore.pollCommentStatus()
-  taskStore.pollWarmupStatus()
+  taskStore.pollCommentStatus(slot)
+  taskStore.pollWarmupStatus(slot)
 }
 
 async function stopTask() {
+  const slot = slotStore.currentSlot
   if (mode.value === 'warmup') {
-    await taskApi.stopWarmup()
+    await taskApi.stopWarmup(slot)
   } else {
-    await taskApi.stopComment()
+    await taskApi.stopComment(slot)
   }
 }
 
@@ -178,7 +188,7 @@ const modes = [
     <section class="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-5">
       <h3 class="text-sm font-semibold mb-3">运行日志</h3>
       <div class="bg-gray-950 font-mono text-xs rounded-lg p-3 h-56 overflow-y-auto flex flex-col">
-        <div v-for="(entry, i) in taskStore.logs" :key="i" class="leading-5 flex gap-2 flex-shrink-0">
+        <div v-for="(entry, i) in displayLogs" :key="i" class="leading-5 flex gap-2 flex-shrink-0">
           <span class="text-gray-500 flex-shrink-0">{{ entry.time }}</span>
           <span
             class="flex-shrink-0 font-medium w-14"
@@ -192,7 +202,7 @@ const modes = [
           >{{ entry.level }}</span>
           <span class="text-gray-300 break-words min-w-0">{{ entry.message }}</span>
         </div>
-        <div v-if="taskStore.logs.length === 0" class="text-gray-600">等待日志输出...</div>
+        <div v-if="displayLogs.length === 0" class="text-gray-600">等待日志输出...</div>
       </div>
     </section>
   </div>

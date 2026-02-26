@@ -173,9 +173,11 @@ from web.routers.task_api import router as task_api_router
 from web.routers.auth_api import router as auth_api_router
 from web.routers.log_api import router as log_api_router
 from web.routers.file_api import router as file_api_router
+from web.routers.instances_api import router as instances_api_router
 from web.websocket.ws_handler import router as ws_router
 
 app.include_router(session_router, prefix="/api/session", tags=["session"])
+app.include_router(instances_api_router, prefix="/api/instances", tags=["instances"])
 app.include_router(module_router, prefix="/api/modules", tags=["modules"])
 app.include_router(model_api_router, prefix="/api/models", tags=["models"])
 app.include_router(browser_api_router, prefix="/api/browsers", tags=["browsers"])
@@ -220,9 +222,10 @@ if os.path.isdir(panel_dir):
             return FileResponse(panel_index_path, media_type="text/html")
         return {"error": "Panel not built"}
 
+# 旧版 frontend 挂到 /app，避免 mount("/") 拦截 /ws、/api，导致运行日志 WebSocket 连不上
 frontend_dir = os.path.join(_web_base, "frontend")
 if os.path.isdir(frontend_dir):
-    app.mount("/", StaticFiles(directory=frontend_dir, html=True), name="frontend")
+    app.mount("/app", StaticFiles(directory=frontend_dir, html=True), name="frontend")
 
 
 def start_web_server(host: str = "0.0.0.0", port: int = 9527) -> None:

@@ -1,10 +1,12 @@
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
 import { useConfigStore } from '../stores/config'
+import { useSlotStore } from '../stores/slot'
 import { useAlertModalStore } from '../stores/alertModal'
 import { fileApi } from '../api'
 
 const configStore = useConfigStore()
+const slotStore = useSlotStore()
 const alertModal = useAlertModalStore()
 
 const baseUrl = ref('https://api.deepseek.com/v1')
@@ -46,8 +48,7 @@ const sensitivityLabel = computed(() => {
 })
 
 onMounted(() => {
-  // 进入页面时若全局 config 尚未加载，主动拉取一次，避免依赖 App 的首次 load 时机
-  if (!configStore.config) configStore.load()
+  if (!configStore.config) configStore.load(slotStore.currentSlot)
   watch(
     () => configStore.config?.ai,
     (ai) => { if (ai) loadFromConfig(ai) },
@@ -102,7 +103,7 @@ async function saveConfig() {
           sensitivity: sensitivity.value,
         },
       },
-    })
+    }, slotStore.currentSlot)
     alertModal.success('AI 配置已保存')
   } catch (e) {
     const msg = e?.response?.data?.detail || e?.message || String(e)

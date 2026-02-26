@@ -8,9 +8,10 @@ from core.selectors import BilibiliSelectors
 logger = get_logger()
 
 class AuthManager:
-    def __init__(self, context: BrowserContext, cookie_file: str = "cookies.json"):
+    def __init__(self, context: BrowserContext, cookie_file: str = "cookies.json", qrcode_path: str | None = None):
         self.context = context
         self.cookie_file = cookie_file
+        self.qrcode_path = qrcode_path or "login_qrcode.png"
 
     def login(self):
         """
@@ -93,8 +94,8 @@ class AuthManager:
             page.goto("https://passport.bilibili.com/login", wait_until="domcontentloaded")
             logger.info("请在打开的浏览器窗口中扫描二维码登录。")
             try:
-                page.screenshot(path="login_qrcode.png")
-                logger.info("已保存登录截图到 login_qrcode.png")
+                page.screenshot(path=self.qrcode_path)
+                logger.info(f"已保存登录截图到 {self.qrcode_path}")
             except Exception as e:
                 logger.error(f"截图失败: {e}")
             

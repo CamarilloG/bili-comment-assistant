@@ -16,6 +16,7 @@
 | 选择「AI 评论」仍走普通评论 | 仅根据 `ai.enabled` 创建 provider | 2.7 |
 | 吐司提示不明显、看不到 | 右上角小条不显眼 | 2.8 |
 | 保存后弹窗不出现 | 前端未重新构建，仍用旧 bundle | 2.9 |
+| 控制台运行日志不显示（一直「等待日志输出...」） | 旧版 frontend 挂载在 `/` 拦截了 `/ws/logs` | 2.10 |
 
 ---
 
@@ -160,6 +161,27 @@ Starlette 的 `StaticFiles(..., html=True)` 只会在「路径对应磁盘上的
 
 **修复**  
 在 `app/web/frontend-v2` 下执行 `npm run build`（或 `npx vite build`）重新构建前端。构建完成后**强制刷新**浏览器（如 Ctrl+F5）或重新打开面板地址，再试保存即可看到弹窗。
+
+---
+
+### 2.10 控制台运行日志不显示
+
+**现象**  
+控制台「运行日志」区域一直显示「等待日志输出...」，养号或评论任务在运行但页面无任何日志输出。
+
+**原因**  
+当存在 `app/web/frontend` 目录时，后端将旧版前端通过 `app.mount("/", StaticFiles(...))` 挂载在根路径 **`/`**。Starlette 会优先用该挂载处理所有路径，导致 **`/ws/logs`** 的 WebSocket 请求被当作静态文件处理，无法到达 `log_api`；后端 `broadcast_log` 时该 slot 订阅者数为 0，日志无法推送到前端。
+
+**修复**  
+在 `app/web/app.py` 中，将旧版前端的挂载路径由 **`"/"`** 改为 **`"/app"`**：
+
+```python
+# 旧版 frontend 挂到 /app，避免 mount("/") 拦截 /ws、/api
+if os.path.isdir(frontend_dir):
+    app.mount("/app", StaticFiles(directory=frontend_dir, html=True), name="frontend")
+```
+
+修改后重启后端；若使用打包前端，需在 `app/web/frontend-v2` 下执行 `npm run build` 并强刷页面。访问地址仍为 `http://localhost:9527/panel/`。
 
 ---
 

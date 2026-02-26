@@ -123,7 +123,8 @@ class ConfigValidator:
             if "texts" in config["comment"]:
                 validated["comment"]["texts"] = config["comment"]["texts"]
             if "images" in config["comment"]:
-                validated["comment"]["images"] = config["comment"]["images"]
+                raw = config["comment"]["images"]
+                validated["comment"]["images"] = [raw] if isinstance(raw, str) and raw.strip() else (raw if isinstance(raw, list) else [])
             if "enable_image" in config["comment"]:
                 validated["comment"]["enable_image"] = bool(config["comment"]["enable_image"])
         
@@ -194,15 +195,8 @@ class ConfigValidator:
         if not config["comment"]["texts"]:
             raise ValueError("At least one comment text is required!")
         
-        ai = config.get("ai", {})
-        need_ai = ai.get("comment", {}).get("enabled") or (
-            ai.get("filter", {}).get("enabled") and bool((ai.get("filter", {}).get("criteria") or "").strip())
-        )
-        if need_ai:
-            if not (ai.get("api_key") or "").strip():
-                raise ValueError("智能评论或智能筛选已开启，请填写 API Key")
-            if not (ai.get("base_url") or "").strip():
-                raise ValueError("智能评论或智能筛选已开启，请填写 Base URL")
+        # 智能评论/智能筛选开关仅影响「AI 评论模式」；未配置 api_key 时运行时不会启用 AI，不在此处强制要求，避免普通模板评论也报错
+        # （AIManager 在无 api_key 时不创建 provider，is_comment_enabled/is_filter_enabled 为 False，会走模板评论）
     
     @staticmethod
     def save_config(config: Dict[str, Any], path: str | None = None) -> None:

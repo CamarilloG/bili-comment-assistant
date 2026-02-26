@@ -7,11 +7,11 @@ export const useConfigStore = defineStore('config', () => {
   const loading = ref(false)
   const error = ref(null)
 
-  async function load() {
+  async function load(slot = '0') {
     loading.value = true
     error.value = null
     try {
-      const { data } = await configApi.get()
+      const { data } = await configApi.get(slot)
       config.value = data
     } catch (e) {
       error.value = e.message
@@ -20,11 +20,11 @@ export const useConfigStore = defineStore('config', () => {
     }
   }
 
-  async function save(newConfig) {
+  async function save(newConfig, slot = '0') {
     loading.value = true
     error.value = null
     try {
-      const { data } = await configApi.update(newConfig)
+      const { data } = await configApi.update(newConfig, slot)
       config.value = { ...config.value, ...newConfig }
       return data
     } catch (e) {

@@ -5,25 +5,29 @@ const api = axios.create({
   timeout: 30000,
 })
 
+function slotParams(slot) {
+  return { params: { slot: slot ?? '0' } }
+}
+
 export const configApi = {
-  get: () => api.get('/config'),
-  update: (config) => api.put('/config', { config }),
+  get: (slot) => api.get('/config', slotParams(slot)),
+  update: (config, slot) => api.put('/config', { config }, slotParams(slot)),
 }
 
 export const taskApi = {
-  startComment: () => api.post('/task/comment/start'),
-  stopComment: () => api.post('/task/comment/stop'),
-  commentStatus: () => api.get('/task/comment/status'),
-  startWarmup: () => api.post('/task/warmup/start'),
-  stopWarmup: () => api.post('/task/warmup/stop'),
-  warmupStatus: () => api.get('/task/warmup/status'),
+  startComment: (slot) => api.post('/task/comment/start', null, slotParams(slot)),
+  stopComment: (slot) => api.post('/task/comment/stop', null, slotParams(slot)),
+  commentStatus: (slot) => api.get('/task/comment/status', slotParams(slot)),
+  startWarmup: (slot) => api.post('/task/warmup/start', null, slotParams(slot)),
+  stopWarmup: (slot) => api.post('/task/warmup/stop', null, slotParams(slot)),
+  warmupStatus: (slot) => api.get('/task/warmup/status', slotParams(slot)),
 }
 
 export const authApi = {
-  status: () => api.get('/auth/status'),
-  check: () => api.post('/auth/check'),
-  startQrLogin: () => api.post('/auth/qrcode'),
-  getQrImage: () => api.get('/auth/qrcode/image'),
+  status: (slot) => api.get('/auth/status', slotParams(slot)),
+  check: (slot) => api.post('/auth/check', null, slotParams(slot)),
+  startQrLogin: (slot) => api.post('/auth/qrcode', null, slotParams(slot)),
+  getQrImage: (slot) => api.get('/auth/qrcode/image', slotParams(slot)),
 }
 
 export const fileApi = {

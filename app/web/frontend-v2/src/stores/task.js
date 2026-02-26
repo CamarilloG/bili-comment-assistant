@@ -15,9 +15,12 @@ function statusToLabel(s) {
   return s
 }
 
+const SLOT_IDS = ['0', '1', '2']
+
 export const useTaskStore = defineStore('task', () => {
   const commentStatus = ref({ running: false, status: 'idle', videos: [], video_count: 0 })
   const warmupStatus = ref({ running: false, status: 'idle', stats: {} })
+  const logsBySlot = ref(Object.fromEntries(SLOT_IDS.map(id => [id, []])))
   const logs = ref([])
 
   const isCommentRunning = computed(() => commentStatus.value.running)
@@ -31,26 +34,29 @@ export const useTaskStore = defineStore('task', () => {
 
   let pollTimer = null
   let ws = null
+  let pollingSlot = '0'
+  let currentLogSlot = '0'
 
-  async function pollCommentStatus() {
+  async function pollCommentStatus(slot = '0') {
     try {
-      const { data } = await taskApi.commentStatus()
+      const { data } = await taskApi.commentStatus(slot)
       commentStatus.value = data
     } catch { /* ignore */ }
   }
 
-  async function pollWarmupStatus() {
+  async function pollWarmupStatus(slot = '0') {
     try {
-      const { data } = await taskApi.warmupStatus()
+      const { data } = await taskApi.warmupStatus(slot)
       warmupStatus.value = data
     } catch { /* ignore */ }
   }
 
-  function startPolling() {
+  function startPolling(slot = '0') {
     stopPolling()
+    pollingSlot = slot
     pollTimer = setInterval(() => {
-      pollCommentStatus()
-      pollWarmupStatus()
+      pollCommentStatus(pollingSlot)
+      pollWarmupStatus(pollingSlot)
     }, 2000)
   }
 
@@ -61,10 +67,13 @@ export const useTaskStore = defineStore('task', () => {
     }
   }
 
-  function connectLogs() {
-    if (ws) ws.close()
+  function connectLogs(slot = '0') {
+    if (ws) { ws.onclose = null; ws.close(); ws = null }
+    currentLogSlot = slot
+    if (!logsBySlot.value[slot]) logsBySlot.value[slot] = []
+    const targetSlot = slot
     const proto = location.protocol === 'https:' ? 'wss' : 'ws'
-    ws = new WebSocket(`${proto}://${location.host}/ws/logs`)
+    ws = new WebSocket(`${proto}://${location.host}/ws/logs?slot=${encodeURIComponent(slot)}`)
     ws.onmessage = (e) => {
       let entry
       const raw = e.data
@@ -84,11 +93,12 @@ export const useTaskStore = defineStore('task', () => {
           entry = { time: '', level: 'INFO', message: raw }
         }
       }
-      logs.value.unshift(entry)
-      if (logs.value.length > 500) logs.value.pop()
+      const arr = logsBySlot.value[targetSlot] || []
+      arr.unshift(entry)
+      if (arr.length > 500) arr.pop()
     }
     ws.onclose = () => {
-      setTimeout(connectLogs, 3000)
+      setTimeout(() => connectLogs(currentLogSlot), 3000)
     }
   }
 
@@ -96,8 +106,13 @@ export const useTaskStore = defineStore('task', () => {
     if (ws) { ws.onclose = null; ws.close(); ws = null }
   }
 
+  function setLogsForCurrentSlot(slot) {
+    logs.value = logsBySlot.value[slot] || []
+  }
+
   return {
-    commentStatus, warmupStatus, logs,
+    commentStatus, warmupStatus, logs, logsBySlot,
+    setLogsForCurrentSlot,
     isCommentRunning, isWarmupRunning, isAnyRunning, displayStatus,
     pollCommentStatus, pollWarmupStatus,
     startPolling, stopPolling,

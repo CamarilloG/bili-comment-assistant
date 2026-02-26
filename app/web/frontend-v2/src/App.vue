@@ -1,11 +1,13 @@
 <script setup>
-import { onMounted, onUnmounted } from 'vue'
+import { onMounted, onUnmounted, watch } from 'vue'
 import { useConfigStore } from './stores/config'
 import { useTaskStore } from './stores/task'
+import { useSlotStore } from './stores/slot'
 import AlertModal from './components/AlertModal.vue'
 
 const configStore = useConfigStore()
 const taskStore = useTaskStore()
+const slotStore = useSlotStore()
 
 const navItems = [
   { path: '/', label: '控制台', icon: 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-4 0h4' },
@@ -16,9 +18,19 @@ const navItems = [
 ]
 
 onMounted(() => {
-  configStore.load()
-  taskStore.startPolling()
-  taskStore.connectLogs()
+  slotStore.loadSlots()
+  configStore.load(slotStore.currentSlot)
+  taskStore.startPolling(slotStore.currentSlot)
+  taskStore.connectLogs(slotStore.currentSlot)
+  taskStore.setLogsForCurrentSlot(slotStore.currentSlot)
+})
+
+watch(() => slotStore.currentSlot, (newSlot) => {
+  configStore.load(newSlot)
+  taskStore.stopPolling()
+  taskStore.startPolling(newSlot)
+  taskStore.connectLogs(newSlot)
+  taskStore.setLogsForCurrentSlot(newSlot)
 })
 
 onUnmounted(() => {
@@ -61,6 +73,12 @@ onUnmounted(() => {
       <header class="h-14 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 flex items-center px-6 shrink-0">
         <h2 class="text-base font-semibold">{{ $route.meta.title }}</h2>
         <div class="ml-auto flex items-center gap-3">
+          <select
+            v-model="slotStore.currentSlot"
+            class="text-xs rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-2.5 py-1.5 text-gray-700 dark:text-gray-300 focus:ring-1 focus:ring-blue-500"
+          >
+            <option v-for="s in slotStore.slots" :key="s.id" :value="s.id">{{ s.label }}</option>
+          </select>
           <span
             class="text-xs px-2 py-0.5 rounded-full"
             :class="taskStore.isAnyRunning
