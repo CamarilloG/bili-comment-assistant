@@ -35,6 +35,7 @@ def _video_callback(video_info: dict):
 
 def _status_callback(bv: str, status: str, comment_content: Optional[str] = None, comment_type: Optional[str] = None):
     with _state_lock:
+        _task_state["comment"]["status"] = status  # 任务级当前状态，供前端「当前状态」展示
         for v in _task_state["comment"]["videos"]:
             if v.get("bv") == bv:
                 v["status"] = status

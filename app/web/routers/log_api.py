@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import queue
 import threading
 
@@ -29,27 +28,24 @@ def broadcast_log(message: str):
 
 
 def _install_log_hook():
-    """Install loguru sink that broadcasts JSON to WebSocket for 按字段着色."""
+    """Install loguru sink that broadcasts to WebSocket for 按字段着色.
+    使用 Tab 分隔 time/level/message，避免 format_map 解析 JSON 大括号导致 KeyError。
+    """
     from loguru import logger as loguru_logger
 
-    def _json_format(record):
-        # sanitize 在 filter 中已应用，此处 record 已是脱敏后的 message
-        # 返回的字符串会被 loguru 再次 format_map(record)，故需转义 { } 避免 KeyError
+    def _tsv_format(record):
         t = record["time"]
         time_str = t.strftime("%H:%M:%S") if hasattr(t, "strftime") else str(t)
         level_name = record["level"].name if hasattr(record["level"], "name") else str(record["level"])
-        s = json.dumps(
-            {"time": time_str, "level": level_name, "message": record["message"]},
-            ensure_ascii=False,
-        )
-        return s.replace("{", "{{").replace("}", "}}")
+        msg = record["message"].replace("\t", " ") if record.get("message") else ""
+        return f"{time_str}\t{level_name}\t{msg}"
 
     def _ws_sink(message):
         broadcast_log(str(message).rstrip())
 
     loguru_logger.add(
         _ws_sink,
-        format=_json_format,
+        format=_tsv_format,
         filter=sanitize_log,
         level="INFO",
     )

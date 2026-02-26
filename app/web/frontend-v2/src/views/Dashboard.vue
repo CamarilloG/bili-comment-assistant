@@ -12,16 +12,10 @@ const taskStore = useTaskStore()
 const mode = ref('comment')
 const loginStatus = ref(null)
 
-const isCommentRunning = computed(() => taskStore.commentStatus.running)
-const isWarmupRunning = computed(() => taskStore.warmupStatus.running)
-const isAnyRunning = computed(() => isCommentRunning.value || isWarmupRunning.value)
+const isCommentRunning = computed(() => taskStore.isCommentRunning)
+const isWarmupRunning = computed(() => taskStore.isWarmupRunning)
+const isAnyRunning = computed(() => taskStore.isAnyRunning)
 const videos = computed(() => taskStore.commentStatus.videos || [])
-
-const currentStatus = computed(() => {
-  if (isCommentRunning.value) return taskStore.commentStatus.status
-  if (isWarmupRunning.value) return taskStore.warmupStatus.status
-  return 'idle'
-})
 
 watch(() => configStore.config, (c) => {
   if (!c) return
@@ -80,7 +74,7 @@ const modes = [
         >
           {{ isAnyRunning ? '任务运行中' : '空闲' }}
         </span>
-        <span v-if="isAnyRunning" class="text-xs text-gray-500">{{ currentStatus }}</span>
+        <span v-if="isAnyRunning && taskStore.displayStatus" class="text-xs text-gray-500">{{ taskStore.displayStatus }}</span>
       </div>
       <div class="flex items-center gap-2">
         <span

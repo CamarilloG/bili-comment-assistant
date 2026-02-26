@@ -63,12 +63,13 @@ onUnmounted(() => {
         <div class="ml-auto flex items-center gap-3">
           <span
             class="text-xs px-2 py-0.5 rounded-full"
-            :class="taskStore.commentStatus.running || taskStore.warmupStatus.running
+            :class="taskStore.isAnyRunning
               ? 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300'
               : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'"
           >
-            {{ taskStore.commentStatus.running || taskStore.warmupStatus.running ? '任务运行中' : '空闲' }}
+            {{ taskStore.isAnyRunning ? '任务运行中' : '空闲' }}
           </span>
+          <span v-if="taskStore.isAnyRunning && taskStore.displayStatus" class="text-xs text-gray-500">{{ taskStore.displayStatus }}</span>
         </div>
       </header>
       <div class="flex-1 overflow-y-auto p-6">

@@ -45,22 +45,22 @@ class AuthManager:
             logger.debug("正在检查登录状态...")
             page.goto("https://www.bilibili.com/", wait_until="domcontentloaded")
             
-            # Wait for header elements
+            # Wait for header: 使用 selectors 中较全的选择器，与 B 站当前 DOM 保持一致，减少误报超时
+            header_selector = BilibiliSelectors.LOGIN["avatar"] + "," + BilibiliSelectors.LOGIN["login_btn"]
             try:
-                # Wait for either avatar or login button
-                page.wait_for_selector(".header-entry-avatar, .header-login-entry", timeout=10000)
+                page.wait_for_selector(header_selector, timeout=10000)
             except Exception:
-                logger.warning("等待头部元素超时。")
+                logger.debug("等待头部元素超时，继续用后续逻辑判断登录态。")
             
             # Check for "登录" text in header-login-entry
-            login_entry = page.locator(".header-login-entry")
+            login_entry = page.locator(BilibiliSelectors.LOGIN["login_btn"])
             if login_entry.count() > 0:
                 if "登录" in login_entry.inner_text():
                     logger.debug("找到'登录'按钮。用户未登录。")
                     return False
             
-            # Check for avatar
-            if page.locator(".header-entry-avatar").count() > 0:
+            # Check for avatar（与 selectors 一致）
+            if page.locator(BilibiliSelectors.LOGIN["avatar"]).count() > 0:
                 logger.debug("找到头像。用户已登录。")
                 return True
             
