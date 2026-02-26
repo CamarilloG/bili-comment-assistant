@@ -5,12 +5,18 @@ from pydantic import BaseModel
 from core.context import context
 import io
 import os
+import sys
 
 app = FastAPI()
 
-# Mount static files
-static_dir = os.path.join(os.path.dirname(__file__), "static")
-app.mount("/static", StaticFiles(directory=static_dir), name="static")
+# Mount static files（frozen 时从 _MEIPASS 取 server/static）
+if getattr(sys, "frozen", False):
+    _server_base = os.path.join(sys._MEIPASS, "server")
+else:
+    _server_base = os.path.dirname(__file__)
+static_dir = os.path.join(_server_base, "static")
+if os.path.isdir(static_dir):
+    app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
 class ExecRequest(BaseModel):
     code: str

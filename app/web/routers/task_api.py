@@ -33,11 +33,15 @@ def _video_callback(video_info: dict):
             videos.append({**video_info, "status": "pending"})
 
 
-def _status_callback(bv: str, status: str):
+def _status_callback(bv: str, status: str, comment_content: Optional[str] = None, comment_type: Optional[str] = None):
     with _state_lock:
         for v in _task_state["comment"]["videos"]:
             if v.get("bv") == bv:
                 v["status"] = status
+                if comment_content is not None:
+                    v["comment_content"] = comment_content
+                if comment_type is not None:
+                    v["comment_type"] = comment_type
                 break
 
 
@@ -106,11 +110,13 @@ async def stop_comment():
 @router.get("/comment/status")
 async def comment_status():
     with _state_lock:
+        # 新项顶置：返回最近 50 条且最新在前
+        recent = _task_state["comment"]["videos"][-50:]
         return {
             "running": _task_state["comment"]["running"],
             "status": _task_state["comment"]["status"],
             "video_count": len(_task_state["comment"]["videos"]),
-            "videos": _task_state["comment"]["videos"][-50:],
+            "videos": list(reversed(recent)),
         }
 
 

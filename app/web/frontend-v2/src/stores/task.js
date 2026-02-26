@@ -44,8 +44,15 @@ export const useTaskStore = defineStore('task', () => {
     const proto = location.protocol === 'https:' ? 'wss' : 'ws'
     ws = new WebSocket(`${proto}://${location.host}/ws/logs`)
     ws.onmessage = (e) => {
-      logs.value.push(e.data)
-      if (logs.value.length > 500) logs.value.splice(0, logs.value.length - 500)
+      let entry
+      try {
+        entry = JSON.parse(e.data)
+        if (!entry || typeof entry.message === 'undefined') entry = { time: '', level: 'INFO', message: e.data }
+      } catch {
+        entry = { time: '', level: 'INFO', message: e.data }
+      }
+      logs.value.unshift(entry)
+      if (logs.value.length > 500) logs.value.pop()
     }
     ws.onclose = () => {
       setTimeout(connectLogs, 3000)

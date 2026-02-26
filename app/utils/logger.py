@@ -21,11 +21,13 @@ def sanitize_log(record):
     return True
 
 logger.remove()
+# 终端仅输出 WARNING 及以上，INFO 全部通过 WebSocket 在浏览器运行日志中查看
 if sys.stderr:
     logger.add(
-        sys.stderr, 
+        sys.stderr,
         format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>",
-        filter=sanitize_log
+        filter=sanitize_log,
+        level="WARNING",
     )
 logger.add(
     "logs/bili_bot_{time:YYYY-MM-DD}.log", 

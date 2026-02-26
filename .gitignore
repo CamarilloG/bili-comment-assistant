@@ -12,6 +12,8 @@ env/
 # 本地配置与敏感文件
 app/config.yaml
 app/cookies.json
+app/comment_log.csv
+app/history.json
 .env
 *.local
 
@@ -19,6 +21,7 @@ app/cookies.json
 **/logs/
 *.log
 **/dist/
+build/
 
 # IDE / OS
 .idea/

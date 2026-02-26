@@ -21,5 +21,6 @@ echo.
 echo [*] 正在启动 Web 控制面板...
 echo [*] 启动后请在浏览器访问: http://localhost:9527/panel/
 echo.
-"%PYTHON_EXE%" -m uvicorn web.app:app --host 0.0.0.0 --port 9527
+REM 使用 run_web 入口以应用 access_log=False 与 log_config，终端仅显示中文启动信息
+"%PYTHON_EXE%" run_web.py
 pause

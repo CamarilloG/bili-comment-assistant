@@ -316,7 +316,7 @@ def main(video_callback=None, status_callback=None):
                         if result == "captcha":
                             captcha_notifier.notify_captcha_alert("comment", video_info.get("bv") or video_info.get("url", ""))
                             log_comment_result(video_info, "验证码拦截", text, comment_source, toast_message)
-                            if status_callback: status_callback(video_info['bv'], "验证码拦截")
+                            if status_callback: status_callback(video_info['bv'], "验证码拦截", comment_content=text, comment_type=comment_source)
                             
                             # 1. 记录并获取今日累计次数
                             captcha_count = captcha_tracker.record()
@@ -335,14 +335,14 @@ def main(video_callback=None, status_callback=None):
                             
                             # 5. 静默等待
                             logger.info(f"[风控冷却] 开始静默等待 {captcha_quiet_minutes} 分钟...")
-                            if status_callback: status_callback(video_info['bv'], f"静默等待{captcha_quiet_minutes}分钟")
+                            if status_callback: status_callback(video_info['bv'], f"静默等待{captcha_quiet_minutes}分钟", comment_content=text, comment_type=comment_source)
                             if _stop_event.wait(captcha_quiet_minutes * 60):
                                 logger.info("静默等待期间收到停止信号，终止任务。")
                                 break
                             
                             # 6. 进入养号模式
                             logger.info(f"[风控冷却] 静默结束，进入养号模式 {cooldown_minutes} 分钟...")
-                            if status_callback: status_callback(video_info['bv'], f"养号冷却{cooldown_minutes}分钟")
+                            if status_callback: status_callback(video_info['bv'], f"养号冷却{cooldown_minutes}分钟", comment_content=text, comment_type=comment_source)
                             try:
                                 if warmup_mgr is None:
                                     warmup_mgr = WarmupManager(context, config, captcha_notifier)
@@ -365,11 +365,11 @@ def main(video_callback=None, status_callback=None):
                             cd_start_time = datetime.now()
                             logger.error(f"[风控CD] 首条CD限制消息时间: {cd_start_time.strftime('%Y-%m-%d %H:%M:%S')}")
                             log_comment_result(video_info, "CD限制", text, comment_source, toast_message)
-                            if status_callback: status_callback(video_info['bv'], "CD限制")
+                            if status_callback: status_callback(video_info['bv'], "CD限制", comment_content=text, comment_type=comment_source)
                             
                             # 记录CD状态并进入养号模式
                             logger.info(f"[风控CD] 检测到CD限制，进入养号模式...")
-                            if status_callback: status_callback(video_info['bv'], "养号冷却")
+                            if status_callback: status_callback(video_info['bv'], "养号冷却", comment_content=text, comment_type=comment_source)
                             try:
                                 if warmup_mgr is None:
                                     warmup_mgr = WarmupManager(context, config, captcha_notifier)
@@ -389,7 +389,7 @@ def main(video_callback=None, status_callback=None):
                         # ===== 正常评论结果处理 =====
                         status = "成功" if result == "success" else "失败"
                         log_comment_result(video_info, status, text, comment_source, toast_message)
-                        if status_callback: status_callback(video_info['bv'], status)
+                        if status_callback: status_callback(video_info['bv'], status, comment_content=text, comment_type=comment_source)
                         
                         if result == "success":
                             history_mgr.add(video_info['bv'])
@@ -400,7 +400,7 @@ def main(video_callback=None, status_callback=None):
                         delay = random.uniform(base_min * delay_multiplier, base_max * delay_multiplier)
                         if delay >= 180:
                             logger.info(f"评论间隔 {delay:.1f} 秒 ≥ 3 分钟，进入养号模式填充间隔")
-                            if status_callback: status_callback(video_info['bv'], "养号填充间隔")
+                            if status_callback: status_callback(video_info['bv'], "养号填充间隔", comment_content=text, comment_type=comment_source)
                             try:
                                 if warmup_mgr is None:
                                     warmup_mgr = WarmupManager(context, config, captcha_notifier)

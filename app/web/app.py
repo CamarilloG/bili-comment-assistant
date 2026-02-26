@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import sys
 from contextlib import asynccontextmanager
 from typing import Any, Dict
 
@@ -128,6 +129,20 @@ async def lifespan(app: FastAPI):
         logger.warning(f"BrowserPool init skipped: {e}")
 
     logger.info(f"Registered modules: {registry.list_ids()}")
+
+    # 终端仅显示中文启动信息（INFO 已移至浏览器运行日志）
+    print("B站评论助手已启动，请访问 http://localhost:9527/panel/", flush=True)
+
+    # exe 打包时：服务就绪后延迟用系统默认浏览器打开控制台
+    if getattr(sys, "frozen", False):
+        import threading
+        import time
+        import webbrowser
+        def _open_browser():
+            time.sleep(1.5)
+            webbrowser.open("http://localhost:9527/panel/")
+        threading.Thread(target=_open_browser, daemon=True).start()
+
     yield
 
     logger.info("Shutting down AI Control Center...")
@@ -171,7 +186,12 @@ app.include_router(log_api_router)
 app.include_router(file_api_router, prefix="/api/file", tags=["file"])
 app.include_router(ws_router)
 
-panel_dir = os.path.join(os.path.dirname(__file__), "frontend-v2", "dist")
+# 静态资源根：PyInstaller 打包后从 _MEIPASS 读取，否则从当前文件所在目录
+if getattr(sys, "frozen", False):
+    _web_base = sys._MEIPASS
+else:
+    _web_base = os.path.dirname(__file__)
+panel_dir = os.path.join(_web_base, "frontend-v2", "dist")
 panel_assets_dir = os.path.join(panel_dir, "assets")
 panel_index_path = os.path.join(panel_dir, "index.html")
 
@@ -200,11 +220,19 @@ if os.path.isdir(panel_dir):
             return FileResponse(panel_index_path, media_type="text/html")
         return {"error": "Panel not built"}
 
-frontend_dir = os.path.join(os.path.dirname(__file__), "frontend")
+frontend_dir = os.path.join(_web_base, "frontend")
 if os.path.isdir(frontend_dir):
     app.mount("/", StaticFiles(directory=frontend_dir, html=True), name="frontend")
 
 
 def start_web_server(host: str = "0.0.0.0", port: int = 9527) -> None:
     import uvicorn
-    uvicorn.run(app, host=host, port=port)
+    log_config = {
+        "version": 1,
+        "disable_existing_loggers": False,
+        "loggers": {
+            "uvicorn": {"level": "CRITICAL"},
+            "uvicorn.access": {"level": "CRITICAL"},
+        },
+    }
+    uvicorn.run(app, host=host, port=port, access_log=False, log_config=log_config)

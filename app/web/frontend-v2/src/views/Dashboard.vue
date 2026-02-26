@@ -131,30 +131,34 @@ const modes = [
       </div>
     </section>
 
-    <!-- Video List -->
+    <!-- Video List：序号、评论内容、评论类型，新项顶置，横向滚动 -->
     <section class="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-5">
       <h3 class="text-sm font-semibold mb-3">
         视频处理列表
         <span class="text-gray-400 font-normal">({{ videos.length }})</span>
       </h3>
-      <div class="overflow-x-auto max-h-72 overflow-y-auto">
-        <table class="w-full text-sm">
-          <thead class="text-left text-xs text-gray-500 uppercase border-b dark:border-gray-800 sticky top-0 bg-white dark:bg-gray-900">
+      <div class="overflow-x-auto overflow-y-auto max-h-72">
+        <table class="text-sm min-w-[800px] w-full">
+          <thead class="text-left text-xs text-gray-500 uppercase border-b dark:border-gray-800 sticky top-0 bg-white dark:bg-gray-900 z-10">
             <tr>
-              <th class="py-2 pr-3">BV号</th>
-              <th class="py-2 pr-3">标题</th>
-              <th class="py-2 pr-3">UP主</th>
-              <th class="py-2 pr-3">播放</th>
-              <th class="py-2">状态</th>
+              <th class="py-2 pr-3 whitespace-nowrap">序号</th>
+              <th class="py-2 pr-3 whitespace-nowrap">BV号</th>
+              <th class="py-2 pr-3 whitespace-nowrap">标题</th>
+              <th class="py-2 pr-3 whitespace-nowrap">UP主</th>
+              <th class="py-2 pr-3 whitespace-nowrap">播放</th>
+              <th class="py-2 pr-3 whitespace-nowrap">状态</th>
+              <th class="py-2 pr-3 whitespace-nowrap">评论内容</th>
+              <th class="py-2 pr-3 whitespace-nowrap">评论类型</th>
             </tr>
           </thead>
           <tbody>
-            <tr v-for="v in videos" :key="v.bv" class="border-b dark:border-gray-800/50 hover:bg-gray-50 dark:hover:bg-gray-800/40">
-              <td class="py-2 pr-3 text-xs text-gray-500 font-mono">{{ v.bv }}</td>
-              <td class="py-2 pr-3 truncate max-w-xs">{{ v.title }}</td>
-              <td class="py-2 pr-3 text-gray-600 dark:text-gray-400">{{ v.author }}</td>
-              <td class="py-2 pr-3 text-gray-500">{{ v.views }}</td>
-              <td class="py-2">
+            <tr v-for="(v, idx) in videos" :key="v.bv + '-' + idx" class="border-b dark:border-gray-800/50 hover:bg-gray-50 dark:hover:bg-gray-800/40">
+              <td class="py-2 pr-3 text-gray-500">{{ idx + 1 }}</td>
+              <td class="py-2 pr-3 text-xs text-gray-500 font-mono whitespace-nowrap">{{ v.bv }}</td>
+              <td class="py-2 pr-3 max-w-[200px] truncate" :title="v.title">{{ v.title }}</td>
+              <td class="py-2 pr-3 text-gray-600 dark:text-gray-400 whitespace-nowrap">{{ v.author }}</td>
+              <td class="py-2 pr-3 text-gray-500 whitespace-nowrap">{{ v.views }}</td>
+              <td class="py-2 pr-3 whitespace-nowrap">
                 <span
                   class="text-xs px-2 py-0.5 rounded-full"
                   :class="{
@@ -165,20 +169,35 @@ const modes = [
                   }"
                 >{{ v.status }}</span>
               </td>
+              <td class="py-2 pr-3 max-w-[220px] truncate text-gray-700 dark:text-gray-300" :title="v.comment_content">{{ v.comment_content || '—' }}</td>
+              <td class="py-2 pr-3 whitespace-nowrap">{{ v.comment_type === 'AI' ? 'AI' : (v.comment_type === 'Template' ? '模板' : (v.comment_type || '—')) }}</td>
             </tr>
             <tr v-if="videos.length === 0">
-              <td colspan="5" class="py-8 text-center text-gray-400 text-sm">暂无数据，选择模式并点击开始</td>
+              <td colspan="8" class="py-8 text-center text-gray-400 text-sm">暂无数据，选择模式并点击开始</td>
             </tr>
           </tbody>
         </table>
       </div>
     </section>
 
-    <!-- Logs -->
+    <!-- Logs：新消息顶置，按字段着色 -->
     <section class="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-5">
       <h3 class="text-sm font-semibold mb-3">运行日志</h3>
-      <div class="bg-gray-950 text-green-400 font-mono text-xs rounded-lg p-3 h-56 overflow-y-auto">
-        <div v-for="(line, i) in taskStore.logs" :key="i" class="leading-5">{{ line }}</div>
+      <div class="bg-gray-950 font-mono text-xs rounded-lg p-3 h-56 overflow-y-auto flex flex-col">
+        <div v-for="(entry, i) in taskStore.logs" :key="i" class="leading-5 flex gap-2 flex-shrink-0">
+          <span class="text-gray-500 flex-shrink-0">{{ entry.time }}</span>
+          <span
+            class="flex-shrink-0 font-medium w-14"
+            :class="{
+              'text-green-400': entry.level === 'INFO',
+              'text-yellow-400': entry.level === 'WARNING',
+              'text-red-400': entry.level === 'ERROR',
+              'text-cyan-400': entry.level === 'DEBUG',
+              'text-gray-400': !['INFO','WARNING','ERROR','DEBUG'].includes(entry.level),
+            }"
+          >{{ entry.level }}</span>
+          <span class="text-gray-300 break-words min-w-0">{{ entry.message }}</span>
+        </div>
         <div v-if="taskStore.logs.length === 0" class="text-gray-600">等待日志输出...</div>
       </div>
     </section>
