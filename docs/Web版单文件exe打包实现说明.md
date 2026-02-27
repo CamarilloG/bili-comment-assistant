@@ -111,7 +111,7 @@
 ### 6.1 环境
 
 - Python 3.x，已安装 `app/requirements.txt` 依赖。
-- 安装 PyInstaller：`pip install pyinstaller`。
+- 安装 PyInstaller：`pip install pyinstaller`（或直接使用项目根目录的 `build_web_exe.bat` 自动检查与安装）。
 
 ### 6.2 打包命令（项目根目录）
 
@@ -127,7 +127,19 @@ pyinstaller run_web.spec
 
 生成文件：`dist/B站评论助手_Web_V3.exe`（名称在 spec 的 `name=` 中配置，含版本号）。
 
-### 6.3 使用方式
+或在 **项目根目录** 直接双击 / 运行：
+
+```bash
+build_web_exe.bat
+```
+
+该脚本会：
+
+- 自动检测（必要时尝试安装）PyInstaller；
+- 调用内置 Python 执行 `pyinstaller run_web.spec`；
+- 在 `dist/` 目录下生成 `B站评论助手_Web_V3.exe`。
+
+### 6.3 使用方式（最终给普通用户）
 
 1. 将 exe 放到任意目录。
 2. 首次运行会在同目录自动创建 `config.yaml`、`cookies.json`（若不存在）。

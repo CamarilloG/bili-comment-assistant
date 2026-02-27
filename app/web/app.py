@@ -76,7 +76,7 @@ def _init_ai_center(config: Dict[str, Any] | None = None) -> None:
     raw_key = config.get("ai", {}).get("api_key", "") if config else ""
     has_valid_key = bool(raw_key) and raw_key not in ("YOUR_API_KEY_HERE", "")
     if not has_valid_key:
-        logger.warning("AI api_key not configured — edit config.yaml to enable AI planning")
+        logger.warning("AI api_key not configured ? edit config.yaml to enable AI planning")
     if has_valid_key:
         ai_cfg = config["ai"]
         router_cfg = ModelRouterConfig(
@@ -130,10 +130,12 @@ async def lifespan(app: FastAPI):
 
     logger.info(f"Registered modules: {registry.list_ids()}")
 
-    # 终端仅显示中文启动信息（INFO 已移至浏览器运行日志）
-    print("B站评论助手已启动，请访问 http://localhost:9527/panel/", flush=True)
+    # ???????????????????? ASCII ????
+    print("Bili Comment Assistant Web panel is running.", flush=True)
+    print("Please open http://localhost:9527/panel/ in your browser.", flush=True)
+    print("Version: 3.1.0  Developer: CamarilloG  Repo: https://github.com/CamarilloG/bili-bot", flush=True)
 
-    # exe 打包时：服务就绪后延迟用系统默认浏览器打开控制台
+    # exe ?????????????????????????
     if getattr(sys, "frozen", False):
         import threading
         import time
@@ -150,8 +152,8 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Bilibili Comment Assistant — AI Control Center",
-    version="3.0.0",
+    title="Bilibili Comment Assistant ??AI Control Center",
+    version="3.1.0",
     lifespan=lifespan,
 )
 
@@ -188,7 +190,7 @@ app.include_router(log_api_router)
 app.include_router(file_api_router, prefix="/api/file", tags=["file"])
 app.include_router(ws_router)
 
-# 静态资源根：PyInstaller 打包后从 _MEIPASS 读取，否则从当前文件所在目录
+# ??????PyInstaller ???? _MEIPASS ???????????????
 if getattr(sys, "frozen", False):
     _web_base = sys._MEIPASS
 else:
@@ -199,10 +201,10 @@ panel_index_path = os.path.join(panel_dir, "index.html")
 
 @app.get("/.well-known/appspecific/com.chrome.devtools.json")
 async def chrome_devtools_well_known() -> Dict[str, Any]:
-    """Chrome DevTools 打开时会请求此路径，返回空 JSON 避免 404。"""
+    """Chrome DevTools ????????????? JSON ?? 404?"""
     return {}
 
-# Panel SPA：先挂载 /panel/assets，再对 /panel、/panel/xxx 返回 index.html（前端路由如 /panel/ai 才能不 404）
+# Panel SPA???? /panel/assets????/panel??panel/xxx ?? index.html?????? /panel/ai ????404??
 if os.path.isdir(panel_dir):
     if os.path.isdir(panel_assets_dir):
         app.mount("/panel/assets", StaticFiles(directory=panel_assets_dir), name="panel_assets")
@@ -217,12 +219,12 @@ if os.path.isdir(panel_dir):
 
     @app.get("/panel/{full_path:path}")
     async def panel_spa_fallback(full_path: str):
-        # /panel/assets/* 已由上面 mount 处理，不会进这里
+        # /panel/assets/* ???? mount ????????
         if os.path.exists(panel_index_path):
             return FileResponse(panel_index_path, media_type="text/html")
         return {"error": "Panel not built"}
 
-# 旧版 frontend 挂到 /app，避免 mount("/") 拦截 /ws、/api，导致运行日志 WebSocket 连不上
+# ?? frontend ?? /app????mount("/") ?? /ws??api????????WebSocket ????
 frontend_dir = os.path.join(_web_base, "frontend")
 if os.path.isdir(frontend_dir):
     app.mount("/app", StaticFiles(directory=frontend_dir, html=True), name="frontend")

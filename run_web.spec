@@ -1,10 +1,12 @@
 # -*- mode: python ; coding: utf-8 -*-
-# Web 版单文件 exe 打包配置。在项目根目录执行: pyinstaller run_web.spec
+# Web ???? exe ?????????????? pyinstaller run_web.spec
 
-# 静态资源：解压到 _MEIPASS 后与 _web_base 拼接得到 frontend-v2/dist、frontend
+# ?????????_MEIPASS ?? _web_base ???? frontend-v2/dist?frontend
 block_cipher = None
 app_dir = 'app'
 datas = [
+    # ??? app ???????????frozen ?? sys._MEIPASS/app ?? Python ?
+    (app_dir, 'app'),
     (f'{app_dir}/web/frontend-v2/dist', 'frontend-v2/dist'),
     (f'{app_dir}/web/frontend', 'frontend'),
     (f'{app_dir}/server/static', 'server/static'),
@@ -28,6 +30,8 @@ a = Analysis(
         'uvicorn.lifespan.on',
         'core.config',
         'winotify',
+        'web',
+        'web.app',
     ],
     hookspath=[],
     hooksconfig={},
@@ -48,7 +52,7 @@ exe = EXE(
     a.zipfiles,
     a.datas,
     [],
-    name='B站评论助手_Web_V3',
+    name='BiliBot_Web_V3',
     icon=f'{app_dir}/pmkix-xoym4-001.ico',
     debug=False,
     bootloader_ignore_signals=False,

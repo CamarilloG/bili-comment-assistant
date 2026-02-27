@@ -7,15 +7,39 @@ import os
 import sys
 import traceback
 
+
+def _set_windows_console_utf8() -> None:
+    """在 Windows 下将控制台编码切换为 UTF-8，尽量避免中文输出乱码。"""
+    if os.name != "nt":
+        return
+    try:
+        import ctypes
+
+        ctypes.windll.kernel32.SetConsoleOutputCP(65001)
+        ctypes.windll.kernel32.SetConsoleCP(65001)
+    except Exception:
+        # 若切换失败则静默忽略，避免影响主流程
+        pass
+
+
 # 工作目录：frozen 时用 exe 所在目录（config.yaml、cookies.json 等放同目录）
 if getattr(sys, "frozen", False):
     app_base = os.path.dirname(sys.executable)
     os.chdir(app_base)
+    # PyInstaller onefile: 源码会被解压到 sys._MEIPASS/app 下，这里显式加入 sys.path 以便导入 web.app 等包
+    meipass = getattr(sys, "_MEIPASS", None)
+    if meipass:
+        app_src = os.path.join(meipass, "app")
+        if os.path.isdir(app_src) and app_src not in sys.path:
+            sys.path.insert(0, app_src)
 else:
     app_base = os.path.dirname(os.path.abspath(__file__))
     os.chdir(app_base)
     if app_base not in sys.path:
         sys.path.insert(0, app_base)
+
+# 尝试切换控制台编码为 UTF-8，减少中文乱码
+_set_windows_console_utf8()
 
 PORT = 9527
 
@@ -151,8 +175,8 @@ def main():
     try:
         if getattr(sys, "frozen", False):
             _ensure_exe_config_files()
-        # 显式导入，让 PyInstaller 把 web 包及其依赖打进 exe；并直接传 app 对象，避免运行时再解析 "web.app:app"
-        import web.app
+        # 显式导入 web.app：让 PyInstaller 收集到该包，并避免字符串导入在打包环境下找不到 web
+        import web.app  # type: ignore[import-not-found]
         import uvicorn
         # 关闭请求日志，终端仅显示下方 lifespan 中的中文启动提示
         log_config = {
