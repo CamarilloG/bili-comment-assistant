@@ -39,6 +39,11 @@ class TaskStartResponse(BaseModel):
     message: str
 
 
+class CommentStartRequest(BaseModel):
+    """前端启动评论任务时可指定模式：comment（普通）或 ai。"""
+    mode: str = "comment"
+
+
 def _make_video_callback(slot_id: str):
     def _cb(video_info: dict):
         state = _get_slot_state(slot_id)
@@ -65,7 +70,7 @@ def _make_status_callback(slot_id: str):
     return _cb
 
 
-def _run_comment_task(slot_id: str):
+def _run_comment_task(slot_id: str, mode: str = "comment"):
     state = _get_slot_state(slot_id)
     workdir = get_workdir(slot_id)
     try:
@@ -76,6 +81,7 @@ def _run_comment_task(slot_id: str):
             status_callback=_make_status_callback(slot_id),
             workdir=workdir,
             slot_id=slot_id,
+            mode=mode,
         )
         with _state_lock:
             state["comment"]["status"] = "completed"
@@ -125,8 +131,28 @@ def _run_warmup_task(slot_id: str):
 
 
 @router.post("/comment/start", response_model=TaskStartResponse)
-async def start_comment(slot: str = Query("0", alias="slot")):
+async def start_comment(
+    payload: CommentStartRequest | None = None,
+    slot: str = Query("0", alias="slot"),
+):
     state = _get_slot_state(slot)
+    mode = (payload.mode if payload and payload.mode in ("comment", "ai") else "comment")
+    # #region agent log
+    try:
+        import json, os, time as _t
+        log_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "debug-829736.log"))
+        with open(log_path, "a", encoding="utf-8") as f:
+            f.write(json.dumps({
+                "sessionId": "829736",
+                "timestamp": int(_t.time() * 1000),
+                "location": "task_api.py:start_comment",
+                "message": "start_comment called",
+                "hypothesisId": "H1",
+                "data": {"slot": slot, "mode": mode},
+            }) + "\n")
+    except Exception:
+        pass
+    # #endregion
     with _state_lock:
         if state["comment"]["running"]:
             return TaskStartResponse(status="error", message="Comment task already running")
@@ -135,7 +161,7 @@ async def start_comment(slot: str = Query("0", alias="slot")):
         state["comment"]["status"] = "starting"
         state["comment"]["stats"] = {}
 
-    t = threading.Thread(target=_run_comment_task, args=(slot,), daemon=True)
+    t = threading.Thread(target=_run_comment_task, args=(slot, mode), daemon=True)
     with _state_lock:
         state["comment"]["thread"] = t
     t.start()

@@ -15,12 +15,10 @@ function statusToLabel(s) {
   return s
 }
 
-const SLOT_IDS = ['0', '1', '2']
-
 export const useTaskStore = defineStore('task', () => {
   const commentStatus = ref({ running: false, status: 'idle', videos: [], video_count: 0 })
   const warmupStatus = ref({ running: false, status: 'idle', stats: {} })
-  const logsBySlot = ref(Object.fromEntries(SLOT_IDS.map(id => [id, []])))
+  const logsBySlot = ref({})
   const logs = ref([])
 
   const isCommentRunning = computed(() => commentStatus.value.running)

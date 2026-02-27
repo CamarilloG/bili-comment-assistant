@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import api from '../api'
+import api, { instancesApi } from '../api'
 
 export const useSlotStore = defineStore('slot', () => {
   const currentSlot = ref('0')
@@ -8,7 +8,7 @@ export const useSlotStore = defineStore('slot', () => {
 
   async function loadSlots() {
     try {
-      const { data } = await api.get('/instances')
+      const { data } = await instancesApi.get()
       if (data.slots && data.slots.length) {
         slots.value = data.slots
       }
@@ -17,9 +17,23 @@ export const useSlotStore = defineStore('slot', () => {
     }
   }
 
+  async function addInstance() {
+    try {
+      const { data } = await instancesApi.add()
+      if (data.slots && data.slots.length) {
+        slots.value = data.slots
+      }
+      if (data.id) {
+        currentSlot.value = data.id
+      }
+    } catch {
+      // ignore error; 保持现有实例列表
+    }
+  }
+
   function setSlot(id) {
     currentSlot.value = id
   }
 
-  return { currentSlot, slots, loadSlots, setSlot }
+  return { currentSlot, slots, loadSlots, addInstance, setSlot }
 })

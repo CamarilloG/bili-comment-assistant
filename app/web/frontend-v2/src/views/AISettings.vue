@@ -26,6 +26,8 @@ const commentImagePath = ref('')
 const filterEnabled = ref(true)
 const criteria = ref('')
 const sensitivity = ref(50)
+const useComments = ref(false)
+const useRelated = ref(false)
 
 const browsingImage = ref(false)
 const testStatus = ref('')
@@ -76,6 +78,8 @@ function loadFromConfig(ai) {
   filterEnabled.value = filter.enabled ?? true
   criteria.value = filter.criteria || ''
   sensitivity.value = filter.sensitivity || 50
+  useComments.value = filter.use_comments ?? false
+  useRelated.value = filter.use_related ?? false
 }
 
 async function saveConfig() {
@@ -101,6 +105,8 @@ async function saveConfig() {
           enabled: filterEnabled.value,
           criteria: criteria.value,
           sensitivity: sensitivity.value,
+          use_comments: useComments.value,
+          use_related: useRelated.value,
         },
       },
     }, slotStore.currentSlot)
@@ -117,6 +123,11 @@ async function testConnection() {
   testing.value = true
   testStatus.value = '测试中...'
   try {
+    // 若当前为掩码值或为空，则提示用户先输入真实 Key，避免用 "***" 访问失败
+    if (!apiKey.value || apiKey.value === '***') {
+      testStatus.value = '请先输入完整 API Key 再测试'
+      return
+    }
     const { default: axios } = await import('axios')
     const resp = await axios.post(
       `${baseUrl.value}/chat/completions`,
@@ -237,6 +248,14 @@ async function browseCommentImage() {
       <div>
         <label class="text-xs text-gray-500">筛选标准</label>
         <textarea v-model="criteria" rows="3" class="w-full border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 text-sm bg-transparent resize-none" />
+      </div>
+      <div class="mt-4 space-y-2">
+        <label class="flex items-center gap-2 text-sm">
+          <input type="checkbox" v-model="useComments" class="accent-blue-600" /> 拉取评论区（供筛选/评论参考）
+        </label>
+        <label class="flex items-center gap-2 text-sm">
+          <input type="checkbox" v-model="useRelated" class="accent-blue-600" /> 拉取推荐视频标题（供筛选/评论参考）
+        </label>
       </div>
       <div class="mt-4">
         <div class="flex items-center justify-between mb-1">

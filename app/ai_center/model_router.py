@@ -56,7 +56,7 @@ class AsyncAIProvider:
         system_prompt: str,
         user_prompt: str,
         temperature: float = 0.8,
-        max_tokens: int = 1024,
+        max_tokens: int = 4096,
     ) -> str | None:
         for attempt in range(1, self.max_retries + 2):
             try:

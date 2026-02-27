@@ -8,7 +8,7 @@ from typing import List
 # 与 config 一致：app 根目录
 _APP_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
-# 默认槽位数量（0, 1, 2）
+# 默认槽位数量（0, 1, 2）——仅用于兼容旧逻辑，实际槽位列表由磁盘扫描决定
 DEFAULT_SLOT_COUNT = 3
 
 
@@ -65,6 +65,31 @@ def ensure_slot_dir(slot_id: str) -> str:
 
 
 def list_slot_ids(max_slots: int | None = None) -> List[str]:
-    """返回槽位 ID 列表，默认 DEFAULT_SLOT_COUNT 个。"""
-    n = max_slots if max_slots is not None else DEFAULT_SLOT_COUNT
-    return [str(i) for i in range(max(1, n))]
+    """返回槽位 ID 列表：始终包含 '0'，其余来自 instances 目录的数字子目录。"""
+    ids = {"0"}
+    instances_root = os.path.join(_APP_ROOT, "instances")
+    if os.path.isdir(instances_root):
+        for name in os.listdir(instances_root):
+            # 仅接受纯数字目录名作为实例 ID
+            if name.isdigit():
+                ids.add(name)
+    result = sorted(ids, key=lambda x: int(x))
+    if max_slots is not None:
+        return result[:max_slots]
+    return result
+
+
+def add_slot(max_slots: int | None = None) -> str:
+    """
+    创建一个新的非 0 槽位目录并返回其 ID。
+    max_slots 为可选上限（不含槽位 0）。
+    """
+    ids = list_slot_ids()
+    existing_nums = [int(s) for s in ids if s.isdigit() and s != "0"]
+    if max_slots is not None and len(existing_nums) >= max_slots:
+        raise ValueError(f"已达到最大实例数上限: {max_slots}")
+
+    next_id = 1 if not existing_nums else max(existing_nums) + 1
+    ensure_slot_dir(str(next_id))
+    return str(next_id)
+

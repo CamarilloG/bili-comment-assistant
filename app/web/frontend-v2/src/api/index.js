@@ -15,7 +15,11 @@ export const configApi = {
 }
 
 export const taskApi = {
-  startComment: (slot) => api.post('/task/comment/start', null, slotParams(slot)),
+  /**
+   * 启动评论任务。
+   * mode: 'comment' | 'ai'
+   */
+  startComment: (slot, mode = 'comment') => api.post('/task/comment/start', { mode }, slotParams(slot)),
   stopComment: (slot) => api.post('/task/comment/stop', null, slotParams(slot)),
   commentStatus: (slot) => api.get('/task/comment/status', slotParams(slot)),
   startWarmup: (slot) => api.post('/task/warmup/start', null, slotParams(slot)),
@@ -33,6 +37,11 @@ export const authApi = {
 export const fileApi = {
   browseExecutable: () => api.post('/file/browse/executable', null, { timeout: 120000 }),
   browseImage: () => api.post('/file/browse/image', null, { timeout: 120000 }),
+}
+
+export const instancesApi = {
+  get: () => api.get('/instances'),
+  add: () => api.post('/instances'),
 }
 
 export default api

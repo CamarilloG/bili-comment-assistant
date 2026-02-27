@@ -42,11 +42,11 @@ async function startTask() {
   const slot = slotStore.currentSlot
 
   if (mode.value === 'comment') {
-    await configStore.save({ ai: { comment: { enabled: false } } }, slot)
-    await taskApi.startComment(slot)
+    // 普通评论模式：仅使用模板评论与普通图片配置
+    await taskApi.startComment(slot, 'comment')
   } else if (mode.value === 'ai_comment') {
-    await configStore.save({ ai: { comment: { enabled: true } } }, slot)
-    await taskApi.startComment(slot)
+    // AI 增强模式：评论与图片由 AI 配置接管，可选启用智能筛选
+    await taskApi.startComment(slot, 'ai')
   } else if (mode.value === 'warmup') {
     await taskApi.startWarmup(slot)
   }

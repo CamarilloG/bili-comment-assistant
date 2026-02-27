@@ -25,6 +25,8 @@ class AITab(ttk.Frame):
         self.max_length_var = tk.IntVar(value=100)
 
         self.filter_enabled_var = tk.BooleanVar(value=True)
+        self.use_comments_var = tk.BooleanVar(value=False)
+        self.use_related_var = tk.BooleanVar(value=False)
         self.sensitivity_var = tk.IntVar(value=50)
 
         self.setup_ui()
@@ -89,13 +91,15 @@ class AITab(ttk.Frame):
         filter_group.columnconfigure(1, weight=1)
 
         ttk.Checkbutton(filter_group, text="启用智能筛选", variable=self.filter_enabled_var, bootstyle="round-toggle").grid(row=0, column=0, columnspan=2, sticky=W, pady=4)
+        ttk.Checkbutton(filter_group, text="拉取评论区（供筛选/评论参考）", variable=self.use_comments_var, bootstyle="round-toggle").grid(row=1, column=0, columnspan=2, sticky=W, pady=2)
+        ttk.Checkbutton(filter_group, text="拉取推荐视频标题（供筛选/评论参考）", variable=self.use_related_var, bootstyle="round-toggle").grid(row=2, column=0, columnspan=2, sticky=W, pady=2)
 
-        ttk.Label(filter_group, text="筛选标准:").grid(row=1, column=0, sticky=NW, pady=3)
+        ttk.Label(filter_group, text="筛选标准:").grid(row=3, column=0, sticky=NW, pady=3)
         self.criteria_text = tk.Text(filter_group, height=3, width=40)
-        self.criteria_text.grid(row=1, column=1, sticky=EW, padx=5, pady=3)
+        self.criteria_text.grid(row=3, column=1, sticky=EW, padx=5, pady=3)
 
         sensitivity_frame = ttk.Frame(filter_group)
-        sensitivity_frame.grid(row=2, column=0, columnspan=2, sticky=EW, pady=6)
+        sensitivity_frame.grid(row=4, column=0, columnspan=2, sticky=EW, pady=6)
         ttk.Label(sensitivity_frame, text="宽松(1)").pack(side=LEFT, padx=(0, 4))
         self.sensitivity_scale = ttk.Scale(
             sensitivity_frame, from_=1, to=100, variable=self.sensitivity_var,
@@ -141,6 +145,8 @@ class AITab(ttk.Frame):
 
             filt = ai.get('filter', {})
             self.filter_enabled_var.set(filt.get('enabled', True))
+            self.use_comments_var.set(filt.get('use_comments', False))
+            self.use_related_var.set(filt.get('use_related', False))
             criteria = filt.get('criteria', '')
             if criteria:
                 self.criteria_text.insert("1.0", criteria)
@@ -175,6 +181,8 @@ class AITab(ttk.Frame):
                     'enabled': self.filter_enabled_var.get(),
                     'criteria': self.criteria_text.get("1.0", tk.END).strip(),
                     'sensitivity': self.sensitivity_var.get(),
+                    'use_comments': self.use_comments_var.get(),
+                    'use_related': self.use_related_var.get(),
                 },
             }
 

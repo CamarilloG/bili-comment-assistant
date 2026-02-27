@@ -41,5 +41,39 @@ logger.add(
     filter=sanitize_log
 )
 
+
+def _toast_sink(formatted: str) -> None:
+    """WARNING 及以上时在 Windows 下弹出系统 Toast，带提示音。"""
+    if sys.platform != "win32":
+        return
+    try:
+        from winotify import Notification, audio
+        level_name = "警告"
+        if "ERROR" in formatted or "CRITICAL" in formatted:
+            level_name = "错误"
+        body = formatted.strip()
+        if len(body) > 200:
+            body = body[:197] + "..."
+        toast = Notification(
+            app_id="B站评论助手",
+            title=f"B站评论助手 - {level_name}",
+            msg=body,
+        )
+        # 使用系统提示音（winotify 的 audio 可选：Default / Mail 等）
+        sound = getattr(audio, "Default", getattr(audio, "Mail", None))
+        if sound is not None:
+            toast.set_audio(sound, loop=False)
+        toast.show()
+    except Exception:
+        pass
+
+
+logger.add(
+    _toast_sink,
+    format="{level} | {message}",
+    filter=sanitize_log,
+    level="WARNING",
+)
+
 def get_logger():
     return logger

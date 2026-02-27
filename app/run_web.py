@@ -34,6 +34,69 @@ def _excepthook(typ, value, tb):
         input("\n按回车键退出...")
 
 
+def _get_windows_default_browser_path() -> str | None:
+    """从 Windows 注册表读取默认浏览器可执行文件路径，失败返回 None。"""
+    if sys.platform != "win32":
+        return None
+    try:
+        import winreg
+        # 先读 UserChoice 得到 ProgId（如 ChromeHTML、MSEdgeHTM）
+        try:
+            key = winreg.OpenKey(
+                winreg.HKEY_CURRENT_USER,
+                r"Software\Microsoft\Windows\Shell\Associations\UrlAssociations\http\UserChoice",
+                0,
+                winreg.KEY_READ,
+            )
+            prog_id, _ = winreg.QueryValueEx(key, "ProgId")
+            winreg.CloseKey(key)
+        except OSError:
+            # 回退：直接读 http\shell\open\command
+            key = winreg.OpenKey(
+                winreg.HKEY_CLASSES_ROOT,
+                r"http\shell\open\command",
+                0,
+                winreg.KEY_READ,
+            )
+            cmd, _ = winreg.QueryValueEx(key, None)
+            winreg.CloseKey(key)
+            return _parse_browser_command(cmd)
+
+        # 根据 ProgId 读打开命令
+        key = winreg.OpenKey(
+            winreg.HKEY_CLASSES_ROOT,
+            rf"{prog_id}\shell\open\command",
+            0,
+            winreg.KEY_READ,
+        )
+        cmd, _ = winreg.QueryValueEx(key, None)
+        winreg.CloseKey(key)
+        return _parse_browser_command(cmd)
+    except Exception:
+        return None
+
+
+def _parse_browser_command(cmd: str) -> str | None:
+    """从注册表命令字符串中解析出 exe 路径（支持带空格的 quoted path、%ProgramFiles% 等）。"""
+    if not cmd or not cmd.strip():
+        return None
+    cmd = cmd.strip()
+    path = None
+    if cmd.startswith('"'):
+        end = cmd.find('"', 1)
+        if end != -1:
+            path = cmd[1:end].strip()
+    else:
+        first = cmd.split(None, 1)[0] if cmd else ""
+        path = first
+    if not path:
+        return None
+    path = os.path.expandvars(path)
+    if os.path.isfile(path):
+        return os.path.normpath(path)
+    return None
+
+
 def _ensure_exe_config_files():
     """首次运行时在 exe 同目录创建所需配置文件（仅 frozen 时调用）。"""
     config_path = os.path.join(app_base, "config.yaml")
@@ -43,6 +106,19 @@ def _ensure_exe_config_files():
             ConfigValidator.load_config(config_path)
         except Exception:
             pass
+
+    # 若配置里浏览器路径为空，尝试写入系统默认浏览器路径（仅 Windows）
+    try:
+        from core.config import ConfigValidator
+        config = ConfigValidator.load_config(config_path)
+        if not (config.get("browser") or {}).get("path", "").strip():
+            browser_path = _get_windows_default_browser_path()
+            if browser_path:
+                config.setdefault("browser", {})["path"] = browser_path
+                ConfigValidator.save_config(config, config_path)
+    except Exception:
+        pass
+
     cookies_path = os.path.join(app_base, "cookies.json")
     if not os.path.exists(cookies_path):
         try:

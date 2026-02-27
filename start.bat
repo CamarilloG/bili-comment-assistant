@@ -1,6 +1,6 @@
 @echo off
 chcp 65001 >nul
-title B站评论助手 V2.2 (Web版)
+title B站评论助手 V3 (Web版)
 
 set PYTHON_EXE=%~dp0python\python.exe
 set APP_DIR=%~dp0app
@@ -15,7 +15,7 @@ if not exist "%PYTHON_EXE%" (
 cd /d "%APP_DIR%"
 
 echo ============================================
-echo   B站评论助手 V2.2 Web控制面板
+echo   B站评论助手 V3 Web控制面板
 echo ============================================
 echo.
 echo [*] 正在启动 Web 控制面板...

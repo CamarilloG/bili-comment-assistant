@@ -11,7 +11,7 @@
 | **入口** | 与 `start.bat` 等价：`uvicorn web.app:app --host 0.0.0.0 --port 9527` |
 | **产出** | 单个 exe，双击即可运行 |
 | **配置** | `config.yaml`、`cookies.json` 等放在 **exe 同目录**，便于用户修改 |
-| **首次运行** | 同目录无配置时自动创建 `config.yaml`（默认值）和 `cookies.json`（`[]`） |
+| **首次运行** | 同目录无配置时自动创建 `config.yaml`（默认值）和 `cookies.json`（`[]`）；若 `browser.path` 为空且为 Windows，自动从注册表读取默认浏览器路径并写入配置 |
 | **浏览器** | 启动后自动用系统默认浏览器打开 `http://localhost:9527/panel/` |
 | **错误** | 异常时不闪退：控制台输出 + 同目录 `run_web_error.log` + 按回车退出 |
 
@@ -97,11 +97,12 @@
 - uvicorn 相关：`uvicorn.logging`、`uvicorn.loops`、`uvicorn.loops.auto`、`uvicorn.protocols.*`、`uvicorn.lifespan`、`uvicorn.lifespan.on`。
 - `core.config`（首次运行创建 config 时使用）。
 
-### 5.4 输出
+### 5.4 输出与图标
 
 - 单文件 exe：`--onefile`（spec 中 EXE 不含 `onefile=False` 即默认单文件）。
 - 控制台：`console=True`，便于看日志与错误。
 - 输出名：`B站评论助手_Web.exe`。
+- 自定义图标：spec 中 `icon='app/pmkix-xoym4-001.ico'`；输出文件名带版本号，如 `B站评论助手_Web_V3.exe`。
 
 ---
 
@@ -124,7 +125,7 @@ pyinstaller run_web.spec
 .\python\python.exe -m PyInstaller run_web.spec
 ```
 
-生成文件：`dist/B站评论助手_Web.exe`。
+生成文件：`dist/B站评论助手_Web_V3.exe`（名称在 spec 的 `name=` 中配置，含版本号）。
 
 ### 6.3 使用方式
 

@@ -151,7 +151,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Bilibili Comment Assistant — AI Control Center",
-    version="2.2.0",
+    version="3.0.0",
     lifespan=lifespan,
 )
 

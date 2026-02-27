@@ -4,6 +4,7 @@ import random
 import threading
 import csv
 import os
+import json
 from datetime import datetime, timedelta
 from playwright.sync_api import sync_playwright
 from core.auth import AuthManager
@@ -174,18 +175,18 @@ def get_browser_launch_args(config, force_headed=False):
     
     return launch_args
 
-def main(video_callback=None, status_callback=None, workdir=None, slot_id="0"):
+def main(video_callback=None, status_callback=None, workdir=None, slot_id="0", mode: str = "comment"):
     workdir = workdir or get_workdir(slot_id)
     ensure_slot_dir(slot_id)
     stop_ev = _get_stop_event(slot_id)
     _slot_token = slot_id_ctx.set(slot_id)
     try:
-        _run_main(video_callback, status_callback, workdir, slot_id, stop_ev)
+        _run_main(video_callback, status_callback, workdir, slot_id, stop_ev, mode=mode)
     finally:
         slot_id_ctx.reset(_slot_token)
 
 
-def _run_main(video_callback, status_callback, workdir, slot_id, stop_ev):
+def _run_main(video_callback, status_callback, workdir, slot_id, stop_ev, mode: str = "comment"):
     stop_ev.clear()
     config_path = get_config_path(slot_id)
     cookie_path = get_cookie_path(slot_id)
@@ -232,6 +233,45 @@ def _run_main(video_callback, status_callback, workdir, slot_id, stop_ev):
         captcha_tracker = CaptchaTracker()
         captcha_notifier = CaptchaNotifier()
         ai_manager = AIManager(config)
+
+        # 根据模式决定本次任务是否启用 AI 评论 / AI 筛选
+        mode = mode or "comment"
+        if mode == "ai":
+            # 进入 AI 增强模式：只要有 provider 即视为可以用 AI 评论；
+            # 是否启用筛选仍由 ai.filter 配置决定
+            has_provider = ai_manager.provider is not None
+            ai_comment_enabled = has_provider
+            ai_filter_enabled = ai_manager.is_filter_enabled()
+        else:
+            # 普通评论模式：完全不使用 AI（既不筛选，也不生成评论）
+            has_provider = False
+            ai_comment_enabled = False
+            ai_filter_enabled = False
+
+        # #region agent log
+        try:
+            log_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "debug-829736.log"))
+            with open(log_path, "a", encoding="utf-8") as f:
+                f.write(json.dumps({
+                    "sessionId": "829736",
+                    "timestamp": int(time.time() * 1000),
+                    "location": "main.py:_run_main:mode",
+                    "message": "mode and AI flags",
+                    "hypothesisId": "H2",
+                    "data": {
+                        "slot": slot_id,
+                        "mode": mode,
+                        "has_provider": bool(has_provider),
+                        "ai_comment_enabled": bool(ai_comment_enabled),
+                        "ai_filter_enabled": bool(ai_filter_enabled),
+                        "has_ai": "ai" in config,
+                        "has_ai_comment": "comment" in config.get("ai", {}),
+                        "has_ai_filter": "filter" in config.get("ai", {}),
+                    },
+                }) + "\n")
+        except Exception:
+            pass
+        # #endregion
         
         # 验证码冷却相关配置
         captcha_config = config.get("captcha", {})
@@ -303,25 +343,27 @@ def _run_main(video_callback, status_callback, workdir, slot_id, stop_ev):
                         if video_callback: video_callback(video_info)
                         if status_callback: status_callback(video_info['bv'], "处理中...")
                         
-                        # Fetch extended context for AI if enabled
+                        # Fetch extended context for AI：按「智能筛选」内开关 use_comments / use_related 拉取
                         filter_cfg = config.get("ai", {}).get("filter", {})
-                        if (ai_manager.is_filter_enabled() or ai_manager.is_comment_enabled()) and \
+                        if (ai_filter_enabled or ai_comment_enabled) and \
                                 (filter_cfg.get("use_comments") or filter_cfg.get("use_related")):
                             from core.video_detail import fetch_top_comments, fetch_related_titles, truncate_comments
-                            if filter_cfg.get("use_comments"):
+                            need_comments = filter_cfg.get("use_comments")
+                            need_related = filter_cfg.get("use_related")
+                            if need_comments:
                                 raw_comments = fetch_top_comments(
                                     comment_page, video_info['url'],
                                     max_count=filter_cfg.get("max_comments", 10),
                                 )
                                 video_info["top_comments"] = truncate_comments(raw_comments)
-                            if filter_cfg.get("use_related"):
+                            if need_related:
                                 related = fetch_related_titles(
                                     comment_page,
                                     max_count=filter_cfg.get("max_related", 5),
                                 )
                                 video_info["related_titles"] = "\n".join(related) if related else "(无)"
 
-                        if ai_manager.is_filter_enabled():
+                        if ai_filter_enabled:
                             keep, reason = ai_manager.check_video_relevance(video_info)
                             if not keep:
                                 logger.info(f"[AI筛选] 跳过视频: {video_info['title']} | 原因: {reason}")
@@ -330,7 +372,7 @@ def _run_main(video_callback, status_callback, workdir, slot_id, stop_ev):
                         
                         comment_source = "Template"
                         text = None
-                        if ai_manager.is_comment_enabled():
+                        if ai_comment_enabled:
                             text = ai_manager.generate_comment(video_info)
                             if text:
                                 comment_source = "AI"
@@ -339,7 +381,7 @@ def _run_main(video_callback, status_callback, workdir, slot_id, stop_ev):
                         if not text:
                             text = random.choice(config["comment"]["texts"])
                         image_path = None
-                        if ai_manager.is_comment_enabled():
+                        if ai_comment_enabled:
                             ai_comment_cfg = config.get("ai", {}).get("comment", {})
                             ai_imgs = ai_comment_cfg.get("images")
                             if isinstance(ai_imgs, str) and ai_imgs.strip():

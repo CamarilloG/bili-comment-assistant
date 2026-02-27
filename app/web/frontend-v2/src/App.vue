@@ -73,6 +73,13 @@ onUnmounted(() => {
       <header class="h-14 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 flex items-center px-6 shrink-0">
         <h2 class="text-base font-semibold">{{ $route.meta.title }}</h2>
         <div class="ml-auto flex items-center gap-3">
+          <button
+            type="button"
+            class="text-xs px-2 py-1 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
+            @click="slotStore.addInstance()"
+          >
+            + 新建实例
+          </button>
           <select
             v-model="slotStore.currentSlot"
             class="text-xs rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-2.5 py-1.5 text-gray-700 dark:text-gray-300 focus:ring-1 focus:ring-blue-500"
