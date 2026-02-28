@@ -3,19 +3,20 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { useConfigStore } from '../stores/config'
 import { useSlotStore } from '../stores/slot'
 import { useAlertModalStore } from '../stores/alertModal'
-import { fileApi } from '../api'
+import { fileApi, modelsApi } from '../api'
 
 const configStore = useConfigStore()
 const slotStore = useSlotStore()
 const alertModal = useAlertModalStore()
 
-const baseUrl = ref('https://api.deepseek.com/v1')
-const apiKey = ref('')
-const model = ref('deepseek-chat')
+const modelList = ref([])
+const modelId = ref('deepseek_chat')
 const aiTimeout = ref(30)
 const maxRetries = ref(2)
 
 const commentEnabled = ref(true)
+const maxComments = ref(10)
+const maxRelated = ref(5)
 const userIntent = ref('')
 const commentStyle = ref('casual')
 const maxLength = ref(100)
@@ -49,8 +50,13 @@ const sensitivityLabel = computed(() => {
   return '极度严格'
 })
 
-onMounted(() => {
+onMounted(async () => {
   if (!configStore.config) configStore.load(slotStore.currentSlot)
+  try {
+    const { data } = await modelsApi.getList()
+    modelList.value = data?.models || []
+    if (modelList.value.length && !modelId.value) modelId.value = modelList.value[0].id
+  } catch (_) {}
   watch(
     () => configStore.config?.ai,
     (ai) => { if (ai) loadFromConfig(ai) },
@@ -59,14 +65,14 @@ onMounted(() => {
 })
 
 function loadFromConfig(ai) {
-  baseUrl.value = ai.base_url || 'https://api.deepseek.com/v1'
-  apiKey.value = ai.api_key || ''
-  model.value = ai.model || 'deepseek-chat'
-  aiTimeout.value = ai.timeout || 30
-  maxRetries.value = ai.max_retries || 2
+  modelId.value = ai.model_id || 'deepseek_chat'
+  aiTimeout.value = ai.timeout ?? 30
+  maxRetries.value = ai.max_retries ?? 2
 
   const comment = ai.comment || {}
   commentEnabled.value = comment.enabled ?? true
+  maxComments.value = comment.max_comments ?? 10
+  maxRelated.value = comment.max_related ?? 5
   userIntent.value = comment.user_intent || ''
   commentStyle.value = comment.style || 'casual'
   maxLength.value = comment.max_length || 100
@@ -87,13 +93,13 @@ async function saveConfig() {
   try {
     await configStore.save({
       ai: {
-        base_url: baseUrl.value,
-        api_key: apiKey.value,
-        model: model.value,
+        model_id: modelId.value,
         timeout: aiTimeout.value,
         max_retries: maxRetries.value,
         comment: {
           enabled: commentEnabled.value,
+          max_comments: maxComments.value,
+          max_related: maxRelated.value,
           user_intent: userIntent.value,
           style: commentStyle.value,
           max_length: maxLength.value,
@@ -120,23 +126,17 @@ async function saveConfig() {
 }
 
 async function testConnection() {
+  if (!modelId.value) {
+    testStatus.value = '请先选择模型'
+    return
+  }
   testing.value = true
   testStatus.value = '测试中...'
   try {
-    // 若当前为掩码值或为空，则提示用户先输入真实 Key，避免用 "***" 访问失败
-    if (!apiKey.value || apiKey.value === '***') {
-      testStatus.value = '请先输入完整 API Key 再测试'
-      return
-    }
-    const { default: axios } = await import('axios')
-    const resp = await axios.post(
-      `${baseUrl.value}/chat/completions`,
-      { model: model.value, messages: [{ role: 'user', content: 'hi' }], max_tokens: 5 },
-      { headers: { Authorization: `Bearer ${apiKey.value}` }, timeout: 10000 }
-    )
-    testStatus.value = resp.data?.choices?.length ? 'OK' : 'No response'
+    const { data } = await modelsApi.test(modelId.value)
+    testStatus.value = data?.ok ? 'OK' : (data?.message || '失败')
   } catch (e) {
-    testStatus.value = `Error: ${e.message}`
+    testStatus.value = e?.response?.data?.message || e?.message || 'Error'
   } finally {
     testing.value = false
   }
@@ -154,24 +154,18 @@ async function browseCommentImage() {
 
 <template>
   <div class="max-w-2xl space-y-5">
-    <!-- API Connection -->
+    <!-- API 连接：模型选择来自项目固定配置 -->
     <section class="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-5">
       <h3 class="text-sm font-semibold mb-4">API 连接</h3>
-      <p class="text-xs text-gray-500 mb-4">在控制台选择「AI 评论」或使用智能筛选时需填写 API。普通评论无需配置。</p>
+      <p class="text-xs text-gray-500 mb-4">选择要启用的模型（API Key 等在项目模型配置中填写）。普通评论无需配置。</p>
       <div class="space-y-3">
         <div>
-          <label class="text-xs text-gray-500">Base URL</label>
-          <input v-model="baseUrl" class="w-full border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 text-sm bg-transparent" />
+          <label class="text-xs text-gray-500">模型</label>
+          <select v-model="modelId" class="w-full border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 text-sm bg-transparent">
+            <option v-for="m in modelList" :key="m.id" :value="m.id">{{ m.model_name }}{{ m.price ? ' — ' + m.price : '' }}</option>
+          </select>
         </div>
-        <div>
-          <label class="text-xs text-gray-500">API Key</label>
-          <input v-model="apiKey" type="password" class="w-full border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 text-sm bg-transparent" />
-        </div>
-        <div class="grid grid-cols-3 gap-3">
-          <div>
-            <label class="text-xs text-gray-500">模型名称</label>
-            <input v-model="model" class="w-full border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-1.5 text-sm bg-transparent" />
-          </div>
+        <div class="grid grid-cols-2 gap-3">
           <div>
             <label class="text-xs text-gray-500">超时(s)</label>
             <input v-model.number="aiTimeout" type="number" class="w-full border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-1.5 text-sm bg-transparent" />
@@ -196,6 +190,16 @@ async function browseCommentImage() {
       <label class="flex items-center gap-2 text-sm mb-4">
         <input type="checkbox" v-model="commentEnabled" class="accent-blue-600" /> 启用智能评论
       </label>
+      <div class="grid grid-cols-2 gap-3 mb-3">
+        <div>
+          <label class="text-xs text-gray-500">评论区热门评论获取量（条）</label>
+          <input v-model.number="maxComments" type="number" min="1" max="30" class="w-full border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-1.5 text-sm bg-transparent" />
+        </div>
+        <div>
+          <label class="text-xs text-gray-500">相关视频标题获取量（条）</label>
+          <input v-model.number="maxRelated" type="number" min="1" max="20" class="w-full border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-1.5 text-sm bg-transparent" />
+        </div>
+      </div>
       <div>
         <label class="text-xs text-gray-500">推广意图/人设</label>
         <textarea v-model="userIntent" rows="3" class="w-full border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 text-sm bg-transparent resize-none" />

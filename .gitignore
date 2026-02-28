@@ -1,4 +1,7 @@
-# Python
+# ========== 不提交到 Git：密钥、打包产物、本地/敏感、环境 ==========
+# 只提交代码与有门槛的配置（如 .spec、模板、脚本），以下均忽略。
+
+# ----- Python -----
 **/__pycache__/
 *.py[cod]
 *.pyo
@@ -6,10 +9,19 @@
 venv/
 env/
 
-# Node
+# ----- Node -----
 **/node_modules/
 
-# 本地配置与敏感文件
+# ----- 密钥与 License（生成结果不提交） -----
+keys/
+*.lic
+
+# ----- 打包与构建产物 -----
+**/dist/
+build/
+python/
+
+# ----- 本地配置与敏感文件 -----
 app/config.yaml
 app/cookies.json
 app/comment_log.csv
@@ -19,13 +31,11 @@ app/instances/
 .env
 *.local
 
-# 日志与构建产物
+# ----- 日志 -----
 **/logs/
 *.log
-**/dist/
-build/
 
-# IDE / OS
+# ----- IDE / OS -----
 .idea/
 .vscode/
 *.swp

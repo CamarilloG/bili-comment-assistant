@@ -7,6 +7,44 @@ import os
 import sys
 import traceback
 
+# 立即设置控制台编码为 UTF-8（在任何输出之前）
+if os.name == "nt":
+    try:
+        import ctypes
+        ctypes.windll.kernel32.SetConsoleOutputCP(65001)
+        ctypes.windll.kernel32.SetConsoleCP(65001)
+    except:
+        pass
+
+
+def _verify_license() -> bool:
+    """
+    验证 License
+
+    Returns:
+        是否验证成功
+    """
+    try:
+        from license.gui import show_license_verification
+
+        # 显示验证窗口
+        license_data = show_license_verification()
+
+        if license_data:
+            print(f"[License] 验证成功 - 用户: {license_data.get('user', 'N/A')}")
+            return True
+        else:
+            print("[License] 验证失败或取消")
+            return False
+
+    except ImportError as e:
+        print(f"[License] 警告: 无法加载 License 验证模块: {e}")
+        print("[License] 跳过验证，继续启动...")
+        return True
+    except Exception as e:
+        print(f"[License] 验证过程出错: {e}")
+        return False
+
 
 def _set_windows_console_utf8() -> None:
     """在 Windows 下将控制台编码切换为 UTF-8，尽量避免中文输出乱码。"""
@@ -173,6 +211,11 @@ def _fatal(err_msg: str, exc: BaseException | None = None):
 
 def main():
     try:
+        # License 验证
+        if not _verify_license():
+            _fatal("License 验证失败，程序无法启动")
+            return
+
         if getattr(sys, "frozen", False):
             _ensure_exe_config_files()
         # 显式导入 web.app：让 PyInstaller 收集到该包，并避免字符串导入在打包环境下找不到 web

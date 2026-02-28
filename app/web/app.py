@@ -73,28 +73,33 @@ def _register_modules(config: Dict[str, Any] | None = None) -> None:
 def _init_ai_center(config: Dict[str, Any] | None = None) -> None:
     global planner, dispatcher, validator, executor
 
-    raw_key = config.get("ai", {}).get("api_key", "") if config else ""
-    has_valid_key = bool(raw_key) and raw_key not in ("YOUR_API_KEY_HERE", "")
+    from core.models_registry import get_model_by_id
+
+    model_id = (config or {}).get("ai", {}).get("model_id") or ""
+    model_cfg = get_model_by_id(model_id) if model_id else None
+    has_valid_key = bool(model_cfg and (model_cfg.get("api_key") or "").strip())
     if not has_valid_key:
-        logger.warning("AI api_key not configured ? edit config.yaml to enable AI planning")
-    if has_valid_key:
+        logger.warning("AI ????????? API Key??? config ? models_config ???")
+    if has_valid_key and model_cfg:
         ai_cfg = config["ai"]
+        timeout = max(5, int(ai_cfg.get("timeout", 30)))
+        max_retries = max(0, int(ai_cfg.get("max_retries", 2)))
         router_cfg = ModelRouterConfig(
             providers={
-                "default": ProviderConfig(
-                    base_url=ai_cfg.get("base_url", "https://api.deepseek.com/v1"),
-                    api_key=ai_cfg["api_key"],
-                    model=ai_cfg.get("model", "deepseek-chat"),
-                    timeout=ai_cfg.get("timeout", 30),
-                    max_retries=ai_cfg.get("max_retries", 2),
+                model_id: ProviderConfig(
+                    base_url=model_cfg.get("base_url", ""),
+                    api_key=model_cfg.get("api_key", ""),
+                    model=model_cfg.get("model", ""),
+                    timeout=timeout,
+                    max_retries=max_retries,
                 ),
             },
             routes={
-                "planning": ModelRoute(primary_model="default"),
-                "comment_gen": ModelRoute(primary_model="default"),
-                "video_filter": ModelRoute(primary_model="default"),
-                "validation": ModelRoute(primary_model="default"),
-                "summarize": ModelRoute(primary_model="default"),
+                "planning": ModelRoute(primary_model=model_id),
+                "comment_gen": ModelRoute(primary_model=model_id),
+                "video_filter": ModelRoute(primary_model=model_id),
+                "validation": ModelRoute(primary_model=model_id),
+                "summarize": ModelRoute(primary_model=model_id),
             },
         )
         model_router.update_config(router_cfg)
@@ -130,20 +135,13 @@ async def lifespan(app: FastAPI):
 
     logger.info(f"Registered modules: {registry.list_ids()}")
 
-    # ???????????????????? ASCII ????
+    # 控制台提示信息
     print("Bili Comment Assistant Web panel is running.", flush=True)
     print("Please open http://localhost:9527/panel/ in your browser.", flush=True)
-    print("Version: 3.1.0  Developer: CamarilloG  Repo: https://github.com/CamarilloG/bili-bot", flush=True)
+    print("Version: 3.6.0  Developer: CamarilloG  Repo: https://github.com/CamarilloG/bili-comment-assistant", flush=True)
 
-    # exe ?????????????????????????
-    if getattr(sys, "frozen", False):
-        import threading
-        import time
-        import webbrowser
-        def _open_browser():
-            time.sleep(1.5)
-            webbrowser.open("http://localhost:9527/panel/")
-        threading.Thread(target=_open_browser, daemon=True).start()
+    # 注意：不再自动打开浏览器，避免与 GUI 启动器冲突
+    # 如果需要自动打开，请在启动器中控制
 
     yield
 
@@ -153,7 +151,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Bilibili Comment Assistant ??AI Control Center",
-    version="3.1.0",
+    version="3.6.0",
     lifespan=lifespan,
 )
 
@@ -176,6 +174,7 @@ from web.routers.auth_api import router as auth_api_router
 from web.routers.log_api import router as log_api_router
 from web.routers.file_api import router as file_api_router
 from web.routers.instances_api import router as instances_api_router
+from web.routers.notification_api import router as notification_api_router
 from web.websocket.ws_handler import router as ws_router
 
 app.include_router(session_router, prefix="/api/session", tags=["session"])
@@ -188,11 +187,12 @@ app.include_router(task_api_router, prefix="/api/task", tags=["task"])
 app.include_router(auth_api_router, prefix="/api/auth", tags=["auth"])
 app.include_router(log_api_router)
 app.include_router(file_api_router, prefix="/api/file", tags=["file"])
+app.include_router(notification_api_router)
 app.include_router(ws_router)
 
 # ??????PyInstaller ???? _MEIPASS ???????????????
 if getattr(sys, "frozen", False):
-    _web_base = sys._MEIPASS
+    _web_base = os.path.join(sys._MEIPASS, "web")
 else:
     _web_base = os.path.dirname(__file__)
 panel_dir = os.path.join(_web_base, "frontend-v2", "dist")

@@ -24,7 +24,8 @@ const saving = ref(false)
 
 onMounted(() => {
   if (configStore.config?.warmup) loadFromConfig(configStore.config.warmup)
-  else watch(() => configStore.config, (c) => { if (c?.warmup) loadFromConfig(c.warmup) }, { once: true })
+  // 监听配置变化，当切换实例时重新加载
+  watch(() => configStore.config?.warmup, (w) => { if (w) loadFromConfig(w) })
 })
 
 function loadFromConfig(w) {

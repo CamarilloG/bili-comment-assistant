@@ -42,6 +42,12 @@ export const fileApi = {
 export const instancesApi = {
   get: () => api.get('/instances'),
   add: () => api.post('/instances'),
+  delete: (slotId) => api.delete(`/instances/${slotId}`),
+}
+
+export const modelsApi = {
+  getList: () => api.get('/models'),
+  test: (modelId) => api.post('/models/test', { model_id: modelId }),
 }
 
 export default api

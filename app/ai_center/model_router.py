@@ -56,7 +56,7 @@ class AsyncAIProvider:
         system_prompt: str,
         user_prompt: str,
         temperature: float = 0.8,
-        max_tokens: int = 4096,
+        max_tokens: int = 2048,
     ) -> str | None:
         for attempt in range(1, self.max_retries + 2):
             try:
@@ -114,7 +114,7 @@ class ModelRouter:
         user_prompt: str,
         fallback: bool = True,
         temperature: float = 0.8,
-        max_tokens: int = 1024,
+        max_tokens: int = 2048,
     ) -> str | None:
         route = self._config.routes.get(task_type)
         if route is None:

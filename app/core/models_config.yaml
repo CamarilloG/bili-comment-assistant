@@ -1,0 +1,50 @@
+# 模型列表：id 唯一，model_name 用于前端展示与下拉选择
+# api_type: openai | openrouter，用于代码适配
+models:
+  - id: deepseek_chat
+    model_name: DeepSeek Chat
+    model: deepseek-chat
+    base_url: https://api.deepseek.com/v1
+    api_key: "sk-daca168435b14bd6b85f595f1729f147"
+    price: ""
+    api_type: openai
+
+  - id: x-ai/grok-4.1-fast
+    model_name: grok-4.1-fast
+    model: x-ai/grok-4.1-fast
+    base_url: https://openrouter.ai/api/v1
+    api_key: "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" 
+    price: ""
+    api_type: openai
+
+  - id: google/gemini-3.1-pro-preview
+    model_name: gemini-3.1-pro
+    model: google/gemini-3.1-pro-preview
+    base_url: https://openrouter.ai/api/v1
+    api_key: "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" 
+    price: ""
+    api_type: openai
+
+  - id: openai/gpt-5.2
+    model_name: gpt-5.2
+    model: openai/gpt-5.2
+    base_url: https://openrouter.ai/api/v1
+    api_key: "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" 
+    price: ""
+    api_type: openai
+
+  - id: arcee-ai/trinity-large-preview:free
+    model_name: arcee-ai
+    model: arcee-ai/trinity-large-preview:free
+    base_url: https://openrouter.ai/api/v1
+    api_key: "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" 
+    price: ""
+    api_type: openai
+
+  - id: openai/gpt-oss-120b:free
+    model_name: gpt-oss
+    model: openai/gpt-oss-120b:free
+    base_url: https://openrouter.ai/api/v1
+    api_key: "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" 
+    price: ""
+    api_type: openai

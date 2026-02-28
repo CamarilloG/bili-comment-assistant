@@ -30,9 +30,8 @@ def _deep_merge(base: Dict[str, Any], incoming: Dict[str, Any]) -> None:
             base[k] = v
 
 
-def _read_raw_config(path: str | None = None) -> Dict[str, Any]:
+def _read_raw_config(path: str) -> Dict[str, Any]:
     """Read config and fill defaults without running required-field validation."""
-    path = path or DEFAULT_CONFIG_PATH
     if not os.path.exists(path):
         ConfigValidator.load_config(path)
     with open(path, "r", encoding="utf-8") as f:

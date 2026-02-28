@@ -26,8 +26,14 @@ watch(() => configStore.config, (c) => {
   checkAuth()
 }, { immediate: true })
 
-watch(() => slotStore.currentSlot, () => {
+watch(() => slotStore.currentSlot, async () => {
+  // 切换实例时立即检查登录状态和任务状态
   checkAuth()
+  // 立即刷新任务状态，不等待轮询
+  await Promise.all([
+    taskStore.pollCommentStatus(slotStore.currentSlot),
+    taskStore.pollWarmupStatus(slotStore.currentSlot)
+  ])
 })
 
 async function checkAuth() {

@@ -20,7 +20,13 @@ const saving = ref(false)
 
 onMounted(() => {
   if (configStore.config) loadFromConfig(configStore.config)
-  else watch(() => configStore.config, (c) => { if (c) loadFromConfig(c) }, { once: true })
+  // 监听配置变化，当切换实例时重新加载
+  watch(() => configStore.config, (c) => { if (c) loadFromConfig(c) })
+  checkAuth()
+})
+
+// 监听槽位切换，重新检查登录状态
+watch(() => slotStore.currentSlot, () => {
   checkAuth()
 })
 

@@ -5,7 +5,7 @@ setlocal
 set BASE_DIR=%~dp0
 set PYTHON_EXE=%BASE_DIR%python\python.exe
 
-title B站评论助手 Web 单文件打包
+title B站评论助手 Web 单文件打包 v3.8
 
 if not exist "%PYTHON_EXE%" (
     echo [ERROR] 内置 Python 未找到: "%PYTHON_EXE%"
@@ -17,7 +17,7 @@ if not exist "%PYTHON_EXE%" (
 cd /d "%BASE_DIR%"
 
 echo ============================================
-echo   B站评论助手 Web 单文件打包
+echo   B站评论助手 Web 单文件打包 v3.8
 echo ============================================
 echo.
 
@@ -53,9 +53,10 @@ if errorlevel 1 (
 echo.
 echo [OK] 打包完成。
 echo 输出文件：
-echo   "%BASE_DIR%dist\B站评论助手_Web_V3.exe"
+echo   "%BASE_DIR%dist\BiliBot_Web_v3.8.exe"
 echo.
 echo 双击该 exe 即可启动 Web 控制面板，浏览器会自动打开 http://localhost:9527/panel/
+echo 版本: v3.8
 echo.
 pause
 

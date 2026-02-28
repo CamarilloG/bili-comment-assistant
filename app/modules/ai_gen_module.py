@@ -110,4 +110,7 @@ class AIGenModule(IModule):
         return True, ""
 
     async def health_check(self) -> bool:
-        return bool(self._config.get("ai", {}).get("api_key"))
+        from core.models_registry import get_model_by_id
+        model_id = self._config.get("ai", {}).get("model_id")
+        model_cfg = get_model_by_id(model_id) if model_id else None
+        return bool(model_cfg and (model_cfg.get("api_key") or "").strip())

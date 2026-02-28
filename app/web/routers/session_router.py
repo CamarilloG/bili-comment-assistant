@@ -51,7 +51,7 @@ async def submit_request(session_id: str, body: RequestBody):
     if not model_router.get_available_models():
         raise HTTPException(
             503,
-            "AI 模型未配置。请在 config.yaml 中设置有效的 ai.api_key，然后重启服务。"
+            "AI 模型未配置。请选择模型并在项目模型配置中填写 API Key，然后重启服务。"
         )
 
     session = sdata["session"]

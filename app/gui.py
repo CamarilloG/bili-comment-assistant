@@ -8,7 +8,6 @@ import tkinter as tk
 # Import tabs
 from gui_tabs.comment_tab import CommentTab
 from gui_tabs.warmup_tab import WarmupTab
-from gui_tabs.ai_tab import AITab
 
 # Redirect logs to GUI (throttled to reduce UI lag)
 class TextHandler:
@@ -54,7 +53,7 @@ class TextHandler:
 class BiliBotGUI:
     def __init__(self, root):
         self.root = root
-        self.root.title("Bilibili 自动评论助手 V2.2")
+        self.root.title("Bilibili 自动评论助手 V3.6")
         self.center_window(1280, 820)
         self.config_file = "config.yaml"
 
@@ -89,10 +88,6 @@ class BiliBotGUI:
         # 2. Warmup Mode Tab
         self.warmup_tab = WarmupTab(self.notebook, self.config_file)
         self.notebook.add(self.warmup_tab, text=" 养号模式 ")
-        
-        # 3. AI Settings Tab
-        self.ai_tab = AITab(self.notebook, self.config_file)
-        self.notebook.add(self.ai_tab, text=" AI 设置 ")
         
         # Bind tab change to handle task mutual exclusion if needed
         self.notebook.bind("<<NotebookTabChanged>>", self.on_tab_changed)

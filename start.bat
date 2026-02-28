@@ -1,13 +1,13 @@
 @echo off
 chcp 65001 >nul
-title B站评论助�?V3 (Web�?
+title B??????V3.6 (Web??
 
 set PYTHON_EXE=%~dp0python\python.exe
 set APP_DIR=%~dp0app
 
 if not exist "%PYTHON_EXE%" (
-    echo [ERROR] 内置 Python 未找�? %PYTHON_EXE%
-    echo 请确保解压完整�?
+    echo [ERROR] ?? Python ???? %PYTHON_EXE%
+    echo ?????????
     pause
     exit /b 1
 )
@@ -15,12 +15,12 @@ if not exist "%PYTHON_EXE%" (
 cd /d "%APP_DIR%"
 
 echo ============================================
-echo   B站评论助�?V3 Web控制面板
+echo   B??????V3.6 Web????
 echo ============================================
 echo.
-echo [*] 正在启动 Web 控制面板...
-echo [*] 启动后请在浏览器访问: http://localhost:9527/panel/
+echo [*] ???? Web ????...
+echo [*] ??????????: http://localhost:9527/panel/
 echo.
-REM 使用 run_web 入口以应�?access_log=False �?log_config，终端仅显示中文启动信息
+REM ?? run_web ??????access_log=False ??log_config????????????
 "%PYTHON_EXE%" run_web.py
 pause

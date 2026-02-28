@@ -7,8 +7,15 @@ from loguru import logger
 # 多槽位：任务线程内设置后，该线程产生的运行日志会带 slot_id，用于前端按实例展示
 slot_id_ctx: contextvars.ContextVar[str | None] = contextvars.ContextVar("slot_id", default=None)
 
-if not os.path.exists("logs"):
-    os.makedirs("logs")
+# 获取日志目录：用户数据/logs
+def _get_log_dir() -> str:
+    """获取日志目录路径"""
+    from core.slot import get_user_data_dir
+    log_dir = os.path.join(get_user_data_dir(), "logs")
+    os.makedirs(log_dir, exist_ok=True)
+    return log_dir
+
+_LOG_DIR = _get_log_dir()
 
 def sanitize_log(record):
     message = record["message"]
@@ -34,9 +41,9 @@ if sys.stderr:
         level="WARNING",
     )
 logger.add(
-    "logs/bili_bot_{time:YYYY-MM-DD}.log", 
-    rotation="10 MB", 
-    retention="10 days", 
+    os.path.join(_LOG_DIR, "bili_bot_{time:YYYY-MM-DD}.log"),
+    rotation="10 MB",
+    retention="10 days",
     encoding="utf-8",
     filter=sanitize_log
 )

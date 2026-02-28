@@ -9,7 +9,11 @@ logger = get_logger()
 class CaptchaTracker:
     """持久化记录每日验证码触发次数"""
 
-    def __init__(self, file_path="captcha_record.json"):
+    def __init__(self, file_path: str | None = None):
+        if file_path is None:
+            # 默认存储在用户数据目录
+            from core.slot import get_user_data_dir
+            file_path = os.path.join(get_user_data_dir(), "captcha_record.json")
         self.file_path = file_path
         self._data = self._load()
 

@@ -103,7 +103,7 @@ class Validator:
             system_prompt=VALIDATOR_SYSTEM_PROMPT,
             user_prompt=user_prompt,
             temperature=0.2,
-            max_tokens=512,
+            max_tokens=2048,
         )
 
         if raw:
@@ -136,7 +136,7 @@ class Validator:
             system_prompt=VALIDATOR_SYSTEM_PROMPT,
             user_prompt=prompt,
             temperature=0.2,
-            max_tokens=256,
+            max_tokens=2048,
         )
         if raw:
             return self._parse_ai_judgment(raw)

@@ -101,8 +101,8 @@
 
 - 单文件 exe：`--onefile`（spec 中 EXE 不含 `onefile=False` 即默认单文件）。
 - 控制台：`console=True`，便于看日志与错误。
-- 输出名：`B站评论助手_Web.exe`。
-- 自定义图标：spec 中 `icon='app/pmkix-xoym4-001.ico'`；输出文件名带版本号，如 `B站评论助手_Web_V3.exe`。
+- 输出名：由 spec 的 `name=` 控制，当前为 `BiliBot_Web_V3_6.exe`。
+- 自定义图标：spec 中 `icon='app/pmkix-xoym4-001.ico'`；输出文件名带版本号。
 
 ---
 
@@ -125,7 +125,7 @@ pyinstaller run_web.spec
 .\python\python.exe -m PyInstaller run_web.spec
 ```
 
-生成文件：`dist/B站评论助手_Web_V3.exe`（名称在 spec 的 `name=` 中配置，含版本号）。
+生成文件：`dist/BiliBot_Web_V3_6.exe`（名称在 spec 的 `name=` 中配置，含版本号）。
 
 或在 **项目根目录** 直接双击 / 运行：
 
@@ -137,7 +137,7 @@ build_web_exe.bat
 
 - 自动检测（必要时尝试安装）PyInstaller；
 - 调用内置 Python 执行 `pyinstaller run_web.spec`；
-- 在 `dist/` 目录下生成 `B站评论助手_Web_V3.exe`。
+- 在 `dist/` 目录下生成 `BiliBot_Web_V3_6.exe`。
 
 ### 6.3 使用方式（最终给普通用户）
 

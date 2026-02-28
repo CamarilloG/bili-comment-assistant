@@ -3,11 +3,18 @@ import { onMounted, onUnmounted, watch } from 'vue'
 import { useConfigStore } from './stores/config'
 import { useTaskStore } from './stores/task'
 import { useSlotStore } from './stores/slot'
+import { useAlertModalStore } from './stores/alertModal'
+import { useInstanceSwitchConfirmStore } from './stores/instanceSwitchConfirm'
 import AlertModal from './components/AlertModal.vue'
+import InstanceSwitchConfirm from './components/InstanceSwitchConfirm.vue'
+import InstanceSwitcher from './components/InstanceSwitcher.vue'
+import ToastNotification from './components/ToastNotification.vue'
 
 const configStore = useConfigStore()
 const taskStore = useTaskStore()
 const slotStore = useSlotStore()
+const alertModal = useAlertModalStore()
+const switchConfirm = useInstanceSwitchConfirmStore()
 
 const navItems = [
   { path: '/', label: '控制台', icon: 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-4 0h4' },
@@ -17,18 +24,41 @@ const navItems = [
   { path: '/settings', label: '基础设置', icon: 'M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z' },
 ]
 
-onMounted(() => {
+onMounted(async () => {
   slotStore.loadSlots()
-  configStore.load(slotStore.currentSlot)
+  slotStore.startStatusPolling() // 启动实例状态轮询
+
+  // 立即加载配置和状态
+  await configStore.load(slotStore.currentSlot)
+  await Promise.all([
+    taskStore.pollCommentStatus(slotStore.currentSlot),
+    taskStore.pollWarmupStatus(slotStore.currentSlot)
+  ])
+
+  // 启动轮询和日志连接
   taskStore.startPolling(slotStore.currentSlot)
   taskStore.connectLogs(slotStore.currentSlot)
   taskStore.setLogsForCurrentSlot(slotStore.currentSlot)
 })
 
-watch(() => slotStore.currentSlot, (newSlot) => {
-  configStore.load(newSlot)
+watch(() => slotStore.currentSlot, async (newSlot) => {
+  // 立即加载配置
+  await configStore.load(newSlot)
+
+  // 停止旧的轮询和日志连接
   taskStore.stopPolling()
+  taskStore.disconnectLogs()
+
+  // 立即获取一次状态（不等待轮询）
+  await Promise.all([
+    taskStore.pollCommentStatus(newSlot),
+    taskStore.pollWarmupStatus(newSlot)
+  ])
+
+  // 启动新的轮询
   taskStore.startPolling(newSlot)
+
+  // 连接新的日志
   taskStore.connectLogs(newSlot)
   taskStore.setLogsForCurrentSlot(newSlot)
 })
@@ -36,7 +66,34 @@ watch(() => slotStore.currentSlot, (newSlot) => {
 onUnmounted(() => {
   taskStore.stopPolling()
   taskStore.disconnectLogs()
+  slotStore.stopStatusPolling() // 停止实例状态轮询
 })
+
+async function handleSlotChange(newSlotId) {
+  if (newSlotId === slotStore.currentSlot) {
+    return
+  }
+
+  // 执行切换（多实例支持同时运行，无需确认）
+  try {
+    // 设置切换状态，显示加载指示
+    await slotStore.setSlot(newSlotId, true)
+
+    // 等待一小段时间确保所有数据加载完成
+    // 这样用户体验更好，避免看到数据闪烁
+    await new Promise(resolve => setTimeout(resolve, 300))
+  } catch (error) {
+    alertModal.error(`切换失败: ${error.message}`)
+  }
+}
+
+async function handleAddInstance() {
+  try {
+    await slotStore.addInstance()
+  } catch (error) {
+    alertModal.error(error.response?.data?.detail || error.message || '创建实例失败')
+  }
+}
 </script>
 
 <template>
@@ -64,28 +121,36 @@ onUnmounted(() => {
         </router-link>
       </nav>
       <div class="px-4 py-3 border-t border-gray-200 dark:border-gray-800 text-xs text-gray-400">
-        v2.2.0
+        v3.8
       </div>
     </aside>
 
     <!-- Main Content -->
     <main class="flex-1 flex flex-col overflow-hidden">
       <header class="h-14 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 flex items-center px-6 shrink-0">
-        <h2 class="text-base font-semibold">{{ $route.meta.title }}</h2>
+        <div class="flex items-center gap-3">
+          <h2 class="text-base font-semibold">{{ $route.meta.title }}</h2>
+          <span class="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 font-medium">
+            实例 {{ slotStore.currentSlot }}
+          </span>
+        </div>
         <div class="ml-auto flex items-center gap-3">
           <button
             type="button"
-            class="text-xs px-2 py-1 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
-            @click="slotStore.addInstance()"
+            :disabled="!slotStore.canAddInstance"
+            :title="slotStore.canAddInstance ? '新建实例' : '已达到最大实例数（10个）'"
+            class="text-xs px-2 py-1 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity"
+            @click="handleAddInstance"
           >
             + 新建实例
           </button>
-          <select
-            v-model="slotStore.currentSlot"
-            class="text-xs rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-2.5 py-1.5 text-gray-700 dark:text-gray-300 focus:ring-1 focus:ring-blue-500"
-          >
-            <option v-for="s in slotStore.slots" :key="s.id" :value="s.id">{{ s.label }}</option>
-          </select>
+          <div class="flex items-center gap-2">
+            <InstanceSwitcher @change="handleSlotChange" />
+            <svg v-if="slotStore.switching" class="animate-spin h-4 w-4 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+          </div>
           <span
             class="text-xs px-2 py-0.5 rounded-full"
             :class="taskStore.isAnyRunning
@@ -98,9 +163,13 @@ onUnmounted(() => {
         </div>
       </header>
       <div class="flex-1 overflow-y-auto p-6">
-        <router-view />
+        <Transition name="page" mode="out-in">
+          <router-view :key="slotStore.currentSlot" />
+        </Transition>
       </div>
     </main>
     <AlertModal />
+    <InstanceSwitchConfirm />
+    <ToastNotification />
   </div>
 </template>

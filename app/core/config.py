@@ -1,5 +1,6 @@
 import yaml
 import os
+import copy
 from typing import Dict, Any, List
 
 # 默认配置文件：相对本文件所在目录，与面板读写同一 app/config.yaml
@@ -44,16 +45,17 @@ class ConfigValidator:
         "captcha": {
             "max_count": 3,
             "quiet_minutes": 5,
-            "warmup_minutes": 30
+            "warmup_minutes": 30,
+            "cd_warmup_hours": 3
         },
         "ai": {
-            "base_url": "https://api.deepseek.com/v1",
-            "api_key": "",
-            "model": "deepseek-chat",
+            "model_id": "deepseek_chat",
             "timeout": 30,
             "max_retries": 2,
             "comment": {
                 "enabled": True,
+                "max_comments": 10,
+                "max_related": 5,
                 "user_intent": "",
                 "style": "casual",
                 "max_length": 100,
@@ -90,7 +92,8 @@ class ConfigValidator:
     
     @staticmethod
     def validate_and_fill_defaults(config: Dict[str, Any], strict: bool = True) -> Dict[str, Any]:
-        validated = ConfigValidator.DEFAULT_CONFIG.copy()
+        # 使用深拷贝避免修改 DEFAULT_CONFIG
+        validated = copy.deepcopy(ConfigValidator.DEFAULT_CONFIG)
         
         if not config:
             return validated
@@ -149,18 +152,22 @@ class ConfigValidator:
                 validated["captcha"]["quiet_minutes"] = max(1, int(captcha["quiet_minutes"]))
             if "warmup_minutes" in captcha:
                 validated["captcha"]["warmup_minutes"] = max(5, int(captcha["warmup_minutes"]))
+            if "cd_warmup_hours" in captcha:
+                validated["captcha"]["cd_warmup_hours"] = max(1, int(captcha["cd_warmup_hours"]))
         
         if "ai" in config:
             ai = config["ai"]
             ai_default = ConfigValidator.DEFAULT_CONFIG["ai"]
+            raw_id = ai.get("model_id") or (str(ai.get("model", "")).replace("-", "_") if ai.get("model") else None)
+            model_id = str(raw_id or ai_default["model_id"])
             validated["ai"] = {
-                "base_url": str(ai.get("base_url", ai_default["base_url"])),
-                "api_key": str(ai.get("api_key", ai_default["api_key"])),
-                "model": str(ai.get("model", ai_default["model"])),
+                "model_id": model_id,
                 "timeout": max(5, int(ai.get("timeout", ai_default["timeout"]))),
                 "max_retries": max(0, int(ai.get("max_retries", ai_default["max_retries"]))),
                 "comment": {
                     "enabled": bool(ai.get("comment", {}).get("enabled", ai_default["comment"]["enabled"])),
+                    "max_comments": max(1, min(30, int(ai.get("comment", {}).get("max_comments") or ai.get("filter", {}).get("max_comments", ai_default["comment"]["max_comments"])))),
+                    "max_related": max(1, min(20, int(ai.get("comment", {}).get("max_related") or ai.get("filter", {}).get("max_related", ai_default["comment"]["max_related"])))),
                     "user_intent": str(ai.get("comment", {}).get("user_intent", ai_default["comment"]["user_intent"])),
                     "style": str(ai.get("comment", {}).get("style", ai_default["comment"]["style"])),
                     "max_length": max(10, int(ai.get("comment", {}).get("max_length", ai_default["comment"]["max_length"]))),

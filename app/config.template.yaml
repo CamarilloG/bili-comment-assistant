@@ -30,18 +30,27 @@ browser:
   path: C:/Program Files/Google/Chrome/Application/chrome.exe
   port: 0
 captcha:
-  max_count: 3
-  quiet_minutes: 5
-  warmup_minutes: 30
+  max_count: 3           # 每日最大验证码次数
+  quiet_minutes: 5       # 验证码后静默等待时间（分钟）
+  warmup_minutes: 30     # 验证码后养号基础时长（分钟）
+  cd_warmup_hours: 3     # CD限制后养号时长（小时），养号结束后自动停止任务
 ai:
   enabled: true
-  base_url: https://api.deepseek.com/v1
-  api_key: YOUR_API_KEY_HERE
-  model: deepseek-chat
+  model_id: deepseek_chat
   timeout: 30
-  max_retries: 2
+  max_retries: 3
+  # 调用间隔（秒）：两次 AI 请求之间的最小间隔，用于避免频率限制
+  # 高级模型（如 gemini/gpt）建议设置为 2-5 秒，普通模型可设置为 0
+  request_interval: 2
+  # 重试延迟基数（秒）：重试时的延迟时间 = retry_delay_base * 重试次数
+  # 例如：retry_delay_base=2，第1次重试延迟2秒，第2次延迟4秒
+  retry_delay_base: 2.0
   comment:
     enabled: true
+    # 评论区热门评论获取量（条）
+    max_comments: 10
+    # 相关视频标题获取量（条）
+    max_related: 5
     user_intent: '你是一个 CF 老玩家，建了一个CF开黑聊天群，想要让更多玩家加群一起玩游戏；
 
       不要用emoji表情。'

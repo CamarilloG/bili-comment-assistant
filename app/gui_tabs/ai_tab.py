@@ -14,11 +14,10 @@ class AITab(ttk.Frame):
         self.config_file = config_file
 
         self.ai_enabled_var = tk.BooleanVar(value=False)
-        self.base_url_var = tk.StringVar(value="https://api.deepseek.com/v1")
-        self.api_key_var = tk.StringVar()
-        self.model_var = tk.StringVar(value="deepseek-chat")
+        self.model_id_var = tk.StringVar(value="deepseek_chat")
         self.timeout_var = tk.IntVar(value=30)
         self.max_retries_var = tk.IntVar(value=2)
+        self._model_list = []  # [(id, model_name), ...]
 
         self.comment_enabled_var = tk.BooleanVar(value=True)
         self.style_var = tk.StringVar(value="casual")
@@ -42,25 +41,20 @@ class AITab(ttk.Frame):
 
         ttk.Checkbutton(api_group, text="启用 AI 功能", variable=self.ai_enabled_var, bootstyle="round-toggle").grid(row=0, column=0, columnspan=2, sticky=W, pady=4)
 
-        ttk.Label(api_group, text="Base URL:").grid(row=1, column=0, sticky=W, pady=3)
-        ttk.Entry(api_group, textvariable=self.base_url_var).grid(row=1, column=1, sticky=EW, padx=5, pady=3)
-
-        ttk.Label(api_group, text="API Key:").grid(row=2, column=0, sticky=W, pady=3)
-        self.api_key_entry = ttk.Entry(api_group, textvariable=self.api_key_var, show="●")
-        self.api_key_entry.grid(row=2, column=1, sticky=EW, padx=5, pady=3)
-
-        ttk.Label(api_group, text="模型名称:").grid(row=3, column=0, sticky=W, pady=3)
-        ttk.Entry(api_group, textvariable=self.model_var).grid(row=3, column=1, sticky=EW, padx=5, pady=3)
+        ttk.Label(api_group, text="模型:").grid(row=1, column=0, sticky=W, pady=3)
+        self.model_combo = ttk.Combobox(api_group, state="readonly", width=32)
+        self.model_combo.grid(row=1, column=1, sticky=EW, padx=5, pady=3)
+        self.model_combo.bind("<<ComboboxSelected>>", self._on_model_selected)
 
         param_frame = ttk.Frame(api_group)
-        param_frame.grid(row=4, column=0, columnspan=2, sticky=EW, pady=4)
+        param_frame.grid(row=2, column=0, columnspan=2, sticky=EW, pady=4)
         ttk.Label(param_frame, text="超时(s):").pack(side=LEFT)
         ttk.Entry(param_frame, textvariable=self.timeout_var, width=6).pack(side=LEFT, padx=(2, 12))
         ttk.Label(param_frame, text="重试次数:").pack(side=LEFT)
         ttk.Entry(param_frame, textvariable=self.max_retries_var, width=4).pack(side=LEFT, padx=2)
 
         test_frame = ttk.Frame(api_group)
-        test_frame.grid(row=5, column=0, columnspan=2, sticky=W, pady=6)
+        test_frame.grid(row=3, column=0, columnspan=2, sticky=W, pady=6)
         ttk.Button(test_frame, text="测试连接", command=self._test_connection, bootstyle="info-outline", width=10).pack(side=LEFT)
         self.test_status = ttk.Label(test_frame, text="", bootstyle="secondary")
         self.test_status.pack(side=LEFT, padx=10)
@@ -114,24 +108,65 @@ class AITab(ttk.Frame):
         btn_frame.pack(fill=X, pady=12)
         ttk.Button(btn_frame, text="保存配置", command=self.save_config, bootstyle="success", width=14).pack(side=LEFT)
 
+    def _on_model_selected(self, event=None):
+        i = self.model_combo.current()
+        if 0 <= i < len(self._model_list):
+            self.model_id_var.set(self._model_list[i][0])
+
     def _on_sensitivity_change(self, value):
         int_val = int(float(value))
         self.sensitivity_var.set(int_val)
         self.sensitivity_label.config(text=str(int_val))
 
+    def _refresh_model_combo(self):
+        try:
+            from core.models_registry import list_models
+            models = list_models(include_secrets=False)
+            self._model_list = [(m["id"], m["model_name"]) for m in models]
+            display_vals = [m[1] for m in self._model_list]
+            self.model_combo["values"] = display_vals
+            if self._model_list:
+                cur_id = self.model_id_var.get()
+                for i, (mid, name) in enumerate(self._model_list):
+                    if mid == cur_id:
+                        self.model_combo.current(i)
+                        break
+                else:
+                    self.model_combo.current(0)
+                    self.model_id_var.set(self._model_list[0][0])
+        except Exception as e:
+            logger.warning(f"Load model list: {e}")
+            self._model_list = [("deepseek_chat", "DeepSeek Chat")]
+            self.model_combo["values"] = ["DeepSeek Chat"]
+            self.model_combo.current(0)
+            self.model_id_var.set("deepseek_chat")
+        self._sync_combo_to_id()
+
+    def _sync_combo_to_id(self):
+        """根据 model_id_var 设置下拉框显示的名称。"""
+        cur_id = self.model_id_var.get()
+        for i, (mid, name) in enumerate(self._model_list):
+            if mid == cur_id:
+                self.model_combo.current(i)
+                return
+        if self._model_list:
+            self.model_combo.current(0)
+            self.model_id_var.set(self._model_list[0][0])
+
     def load_config(self):
         if not os.path.exists(self.config_file):
+            self._refresh_model_combo()
             return
         try:
             with open(self.config_file, 'r', encoding='utf-8') as f:
                 conf = yaml.safe_load(f) or {}
             ai = conf.get('ai', {})
             self.ai_enabled_var.set(ai.get('enabled', False))
-            self.base_url_var.set(ai.get('base_url', 'https://api.deepseek.com/v1'))
-            self.api_key_var.set(ai.get('api_key', ''))
-            self.model_var.set(ai.get('model', 'deepseek-chat'))
+            model_id = ai.get('model_id') or (ai.get('model', '').replace('-', '_') if ai.get('model') else '') or 'deepseek_chat'
+            self.model_id_var.set(model_id)
             self.timeout_var.set(ai.get('timeout', 30))
             self.max_retries_var.set(ai.get('max_retries', 2))
+            self._refresh_model_combo()
 
             comment = ai.get('comment', {})
             self.comment_enabled_var.set(comment.get('enabled', True))
@@ -164,11 +199,12 @@ class AITab(ttk.Frame):
             else:
                 conf = {}
 
+            model_id = self.model_id_var.get().strip()
+            if not model_id and self._model_list:
+                model_id = self._model_list[0][0]
             conf['ai'] = {
                 'enabled': self.ai_enabled_var.get(),
-                'base_url': self.base_url_var.get().strip(),
-                'api_key': self.api_key_var.get().strip(),
-                'model': self.model_var.get().strip(),
+                'model_id': model_id,
                 'timeout': self.timeout_var.get(),
                 'max_retries': self.max_retries_var.get(),
                 'comment': {
@@ -200,18 +236,19 @@ class AITab(ttk.Frame):
 
     def _test_thread(self):
         try:
-            from openai import OpenAI
-            client = OpenAI(
-                base_url=self.base_url_var.get().strip(),
-                api_key=self.api_key_var.get().strip(),
-                timeout=10,
-            )
-            resp = client.chat.completions.create(
-                model=self.model_var.get().strip(),
-                messages=[{"role": "user", "content": "hi"}],
-                max_tokens=5,
-            )
-            if resp.choices:
+            from core.models_registry import get_model_by_id
+            from core.ai_provider import AIProvider
+            model_id = self.model_id_var.get().strip()
+            model_cfg = get_model_by_id(model_id) if model_id else None
+            if not model_cfg:
+                self.after(0, lambda: self.test_status.config(text="❌ 模型不存在", bootstyle="danger"))
+                return
+            if not (model_cfg.get("api_key") or "").strip():
+                self.after(0, lambda: self.test_status.config(text="❌ 未配置 API Key", bootstyle="danger"))
+                return
+            provider = AIProvider(model_cfg, timeout=10, max_retries=1)
+            out = provider.chat("You are a helper.", "hi", max_tokens=32)
+            if out:
                 self.after(0, lambda: self.test_status.config(text="✅ 连接成功", bootstyle="success"))
             else:
                 self.after(0, lambda: self.test_status.config(text="⚠️ 无响应", bootstyle="warning"))
