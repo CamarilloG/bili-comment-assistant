@@ -56,39 +56,78 @@ def _pick_file_win32(title: str, filter_spec: str) -> Optional[str]:
     """Open a Windows native file dialog using comdlg32."""
     try:
         comdlg32 = ctypes.windll.comdlg32
-        
+        user32 = ctypes.windll.user32
+
+        # 获取前台窗口作为父窗口
+        hwnd_owner = user32.GetForegroundWindow()
+
         filename_buf = create_unicode_buffer(4096)
-        
+
         ofn = OPENFILENAMEW()
         ofn.lStructSize = sizeof(OPENFILENAMEW)
+        ofn.hwndOwner = hwnd_owner  # 设置父窗口
         ofn.lpstrFilter = filter_spec
         ofn.nFilterIndex = 1
         ofn.lpstrFile = ctypes.cast(filename_buf, c_wchar_p)
         ofn.nMaxFile = 4096
         ofn.lpstrTitle = title
         ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR | OFN_EXPLORER
-        
+
+        # 尝试将对话框置于最前
         result = comdlg32.GetOpenFileNameW(byref(ofn))
-        
+
         if result:
             return filename_buf.value if filename_buf.value else None
         return None
     except Exception as e:
         print(f"File dialog error: {e}")
+        import traceback
+        traceback.print_exc()
         return None
 
 
 def _pick_file_sync(title: str, extensions: list[tuple[str, str]]) -> Optional[str]:
-    """Open a file dialog using Windows native API."""
-    if sys.platform != "win32":
+    """Open a file dialog using Windows native API or tkinter fallback."""
+    if sys.platform == "win32":
+        # 尝试使用 Windows 原生对话框
+        filter_parts = []
+        for desc, ext in extensions:
+            filter_parts.append(f"{desc}\x00{ext}\x00")
+        filter_spec = "".join(filter_parts) + "\x00"
+
+        result = _pick_file_win32(title, filter_spec)
+        if result:
+            return result
+
+    # 备用方案：使用 tkinter
+    try:
+        import tkinter as tk
+        from tkinter import filedialog
+
+        # 创建隐藏的根窗口
+        root = tk.Tk()
+        root.withdraw()
+        root.attributes('-topmost', True)  # 置顶
+
+        # 构建文件类型过滤器
+        filetypes = [(desc, ext) for desc, ext in extensions]
+
+        # 打开文件对话框
+        file_path = filedialog.askopenfilename(
+            title=title,
+            filetypes=filetypes,
+            parent=root
+        )
+
+        root.destroy()
+
+        return file_path if file_path else None
+
+    except Exception as e:
+        print(f"Tkinter file dialog error: {e}")
+        import traceback
+        traceback.print_exc()
         return None
-    
-    filter_parts = []
-    for desc, ext in extensions:
-        filter_parts.append(f"{desc}\x00{ext}\x00")
-    filter_spec = "".join(filter_parts) + "\x00"
-    
-    return _pick_file_win32(title, filter_spec)
 
 
 @router.post("/browse/executable", response_model=FilePickResult)

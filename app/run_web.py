@@ -160,8 +160,13 @@ def _parse_browser_command(cmd: str) -> str | None:
 
 
 def _ensure_exe_config_files():
-    """首次运行时在 exe 同目录创建所需配置文件（仅 frozen 时调用）。"""
-    config_path = os.path.join(app_base, "config.yaml")
+    """首次运行时在用户数据目录创建所需配置文件（仅 frozen 时调用）。"""
+    from core.slot import get_config_path, get_cookie_path, ensure_slot_dir
+
+    # 确保槽位 0 的目录存在
+    ensure_slot_dir("0")
+    config_path = get_config_path("0")
+
     if not os.path.exists(config_path):
         try:
             from core.config import ConfigValidator
@@ -181,7 +186,7 @@ def _ensure_exe_config_files():
     except Exception:
         pass
 
-    cookies_path = os.path.join(app_base, "cookies.json")
+    cookies_path = get_cookie_path("0")
     if not os.path.exists(cookies_path):
         try:
             with open(cookies_path, "w", encoding="utf-8") as f:
@@ -230,6 +235,12 @@ def main():
                 "uvicorn.access": {"level": "CRITICAL"},
             },
         }
+
+        # Python 3.13 兼容性：使用 asyncio.WindowsSelectorEventLoopPolicy
+        import asyncio
+        if sys.platform == 'win32' and sys.version_info >= (3, 13):
+            asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
         uvicorn.run(
             web.app.app,
             host="0.0.0.0",

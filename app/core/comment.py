@@ -6,12 +6,22 @@ from utils.retry import retry
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 import time
 import os
+import threading
+from typing import Optional
 
 logger = get_logger()
 
 class CommentManager:
     def __init__(self, page: Page):
         self.page = page
+        self._stop_event: Optional[threading.Event] = None
+
+    def _check_stop(self) -> bool:
+        """检查停止信号，返回 True 表示应该停止"""
+        if self._stop_event and self._stop_event.is_set():
+            logger.info("[停止响应] 检测到停止信号，中断评论操作")
+            return True
+        return False
 
     def _get_main_comment_box(self):
         """
@@ -55,10 +65,10 @@ class CommentManager:
 
     def _scroll_to_comments(self) -> bool:
         logger.info("正在滚动查找评论区...")
-        
+
         # 策略: 滚动到 bili-comments 组件
         anchors = ["bili-comments", "#commentapp", "#comment", ".comment-m"]
-        
+
         found_anchor = False
         for anchor in anchors:
             if self.page.locator(anchor).count() > 0:
@@ -68,22 +78,31 @@ class CommentManager:
                     self.page.wait_for_timeout(1000)
                     found_anchor = True
                     break
-                except:
+                except Exception as e:
+                    logger.debug(f"等待锚点失败: {e}")
                     pass
-        
+
         if not found_anchor:
             # 兜底滚动到底部
             self.page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
             self.page.wait_for_timeout(1000)
 
         try:
+            # Check stop signal before waiting
+            if self._check_stop():
+                return False
+
             # 等待懒加载完成
             # 1. 等待 bili-comments 组件 attached
-            self.page.locator("bili-comments").wait_for(state="attached", timeout=10000)
-            
+            self.page.locator("bili-comments").wait_for(state="attached", timeout=8000)
+
+            # Check stop signal before next wait
+            if self._check_stop():
+                return False
+
             # 2. 等待主评论框出现
             # 我们直接等待 bili-comments-header-renderer 里的 bili-comment-box
-            self._get_main_comment_box().wait_for(state="attached", timeout=15000)
+            self._get_main_comment_box().wait_for(state="attached", timeout=10000)
             
             logger.debug("评论区组件已加载。")
             
@@ -99,19 +118,23 @@ class CommentManager:
             box = self._get_main_comment_box()
             if box.count() == 0:
                 return False
-                
+
             box.scroll_into_view_if_needed()
-            
+
             # 1. 模拟鼠标移动到评论框中心 (触发 hover 状态)
             # 根据 HTML，hover 会使 #editor 增加 active 类，并显示 footer
             bbox = box.bounding_box()
             if bbox:
                 self.page.mouse.move(bbox["x"] + bbox["width"] / 2, bbox["y"] + bbox["height"] / 2)
                 self.page.wait_for_timeout(500)
-            
+
+            # Check stop signal before waiting
+            if self._check_stop():
+                return False
+
             # 2. 点击编辑器
             editor = self._editor()
-            editor.wait_for(state="visible", timeout=5000)
+            editor.wait_for(state="visible", timeout=3000)
             editor.click()
             editor.focus()
             
@@ -163,6 +186,10 @@ class CommentManager:
             return False
 
         try:
+            # Check stop signal before upload
+            if self._check_stop():
+                return False
+
             # 定位图片上传按钮
             # 路径: [Main Box] -> #comment-area -> #footer -> button.tool-btn (containing bili-icon[icon*='image'])
             # 注意：HTML 中 class 是 " tool-btn "，locator('.tool-btn') 可以匹配
@@ -171,7 +198,7 @@ class CommentManager:
                        .locator("button.tool-btn")
                        .filter(has=self.page.locator("bili-icon[icon*='image']"))
                        .first)
-            
+
             if img_btn.count() == 0:
                 # 尝试更宽松的定位
                 img_btn = (self._get_main_comment_box()
@@ -179,26 +206,30 @@ class CommentManager:
                            .locator("xpath=..") # 父级 button
                            .first)
 
-            with self.page.expect_file_chooser(timeout=5000) as fc_info:
+            with self.page.expect_file_chooser(timeout=3000) as fc_info:
                 img_btn.click()
-            
+
             fc = fc_info.value
             fc.set_files(image_path)
-            
+
+            # Check stop signal before waiting for preview
+            if self._check_stop():
+                return False
+
             # 等待预览图片出现
             # bili-comment-pictures-upload -> template -> #content -> img/.preview
             preview = (self._get_main_comment_box()
                        .locator("bili-comment-pictures-upload")
                        .locator("img, .preview")
                        .first)
-            
+
             # 给一点时间上传和渲染
             try:
-                preview.wait_for(state="attached", timeout=15000)
+                preview.wait_for(state="attached", timeout=10000)
                 logger.info("图片已上传并显示预览。")
                 return True
-            except:
-                logger.warning("图片上传后未检测到预览，可能失败。")
+            except Exception as e:
+                logger.warning(f"图片上传后未检测到预览，可能失败: {e}")
                 return False
                 
         except Exception as e:
@@ -208,14 +239,14 @@ class CommentManager:
     def _click_send(self) -> bool:
         try:
             btn = self._send_button()
-            
+
             # 检查按钮是否存在
             try:
                 btn.wait_for(state="attached", timeout=5000)
                 # 如果被遮挡（例如被 footer 边缘遮挡），尝试滚动
                 btn.scroll_into_view_if_needed()
-            except:
-                logger.error("发送按钮未找到或未加载。")
+            except Exception as e:
+                logger.error(f"发送按钮未找到或未加载: {e}")
                 return False
 
             # 检查禁用状态
@@ -243,7 +274,7 @@ class CommentManager:
     def _verify_sent(self) -> tuple[str, str]:
         # 1. 检查风控
         if self._check_captcha(): return "captcha", ""
-        
+
         toast_message = ""
         # 2. 优先尝试捕获 Toast 提示
         try:
@@ -254,7 +285,7 @@ class CommentManager:
             text = toast.inner_text().strip()
             toast_message = text
             logger.info(f"捕获到发送提示: {text}")
-            
+
             if "成功" in text:
                 return "success", toast_message
             elif "cd时间未到不能评论" in text or "CD时间未到不能评论" in text:
@@ -275,6 +306,10 @@ class CommentManager:
             editor = self._editor()
             # 轮询检查文本是否为空
             for _ in range(10): # 5秒
+                # Check stop signal during polling
+                if self._check_stop():
+                    return "failed", "用户停止任务"
+
                 if not editor.inner_text().strip():
                     logger.info("评论发布成功 (输入框已清空)。")
                     return "success", toast_message
@@ -288,11 +323,18 @@ class CommentManager:
             return "failed", toast_message
 
     @retry(max_attempts=2, delay=3.0, exceptions=(PlaywrightTimeoutError,))
-    def post_comment(self, url: str, text: str, image_path: str = None) -> tuple[str, str]:
+    def post_comment(self, url: str, text: str, image_path: str = None, stop_event: Optional[threading.Event] = None) -> tuple[str, str]:
+        # Store stop_event for use in internal methods
+        self._stop_event = stop_event
+
         logger.info(f"正在导航至视频: {url}")
         try:
+            # Check stop signal before starting
+            if self._check_stop():
+                return "failed", "用户停止任务"
+
             self.page.goto(url, wait_until="domcontentloaded")
-            
+
             if self._check_captcha():
                 return "captcha", ""
 
@@ -308,7 +350,7 @@ class CommentManager:
             logger.info(f"输入评论: {text}")
             if not self._input_text(text):
                 return "failed", ""
-            
+
             if not self._click_send():
                 return "failed", ""
 

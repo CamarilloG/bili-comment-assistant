@@ -5,6 +5,8 @@ from utils.retry import retry
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 import urllib.parse
 import time
+import threading
+from typing import Optional
 
 logger = get_logger()
 
@@ -13,7 +15,7 @@ class SearchManager:
         self.page = page
 
     @retry(max_attempts=2, delay=2.0, exceptions=(PlaywrightTimeoutError, Exception))
-    def search_videos(self, keyword: str, max_count: int = 5, order: str = "pubdate", duration: int = 0, time_range: dict = None) -> list[dict]:
+    def search_videos(self, keyword: str, max_count: int = 5, order: str = "pubdate", duration: int = 0, time_range: dict = None, stop_event: Optional[threading.Event] = None) -> list[dict]:
         """
         Navigate to search page and return videos from the first page.
         """
@@ -58,29 +60,51 @@ class SearchManager:
                     logger.info(f"应用 URL 时间筛选: {begin_ts} - {end_ts}")
             except Exception as e:
                 logger.error(f"构造时间筛选 URL 出错: {e}")
-        
+
         try:
-            self.page.goto(url, wait_until="domcontentloaded")
-            return self.get_current_page_videos(max_count)
+            # Check stop signal before navigation
+            if stop_event and stop_event.is_set():
+                logger.info("[停止响应] 检测到停止信号，中断搜索操作")
+                return []
+
+            self.page.goto(url, wait_until="domcontentloaded", timeout=10000)
+
+            # Check stop signal immediately after navigation
+            if stop_event and stop_event.is_set():
+                logger.info("[停止响应] 检测到停止信号，中断搜索操作")
+                return []
+
+            return self.get_current_page_videos(max_count, stop_event=stop_event)
         except Exception as e:
             logger.error(f"搜索导航出错: {e}")
             return []
 
     # Removed apply_time_filter as we use URL params now
-    
-    def get_current_page_videos(self, max_count: int = 20) -> list[dict]:
+
+    def get_current_page_videos(self, max_count: int = 20, stop_event: Optional[threading.Event] = None) -> list[dict]:
         """
         Extract videos from the current page content.
         """
         try:
             selectors = BilibiliSelectors.SEARCH
+
+            # Check stop signal before waiting
+            if stop_event and stop_event.is_set():
+                logger.info("[停止响应] 检测到停止信号，中断视频提取")
+                return []
+
             try:
-                self.page.wait_for_selector(selectors["video_card"], timeout=10000)
-            except:
-                logger.warning("等待视频列表选择器超时。")
+                self.page.wait_for_selector(selectors["video_card"], timeout=3000)
+            except Exception as e:
+                logger.warning(f"等待视频列表选择器超时: {e}")
                 if self.page.locator(".search-no-result").count() > 0:
                     logger.info("当前页面无结果。")
                     return []
+
+            # Check stop signal after waiting
+            if stop_event and stop_event.is_set():
+                logger.info("[停止响应] 检测到停止信号，中断视频提取")
+                return []
             
             video_list = []
             cards = self.page.locator(selectors["video_card"])
@@ -90,9 +114,14 @@ class SearchManager:
             # Use a very high limit for the loop to ensure we check all cards
             # The 'max_count' parameter will still limit the returned list size
             # But if the user passes a huge max_count, we want to get everything.
-            loop_limit = count 
-            
-            for i in range(loop_limit): 
+            loop_limit = count
+
+            for i in range(loop_limit):
+                # Check stop signal every 5 iterations
+                if i % 5 == 0 and stop_event and stop_event.is_set():
+                    logger.info("[停止响应] 检测到停止信号，中断视频提取")
+                    return video_list
+
                 try:
                     card = cards.nth(i)
                     link_el = card.locator(selectors["link"]).first

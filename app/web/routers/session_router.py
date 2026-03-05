@@ -173,3 +173,26 @@ async def get_report(session_id: str):
     if not report:
         return {"status": sdata["session"].status, "message": "No report yet"}
     return report.to_dict()
+
+
+@router.delete("/{session_id}")
+async def delete_session(session_id: str):
+    """删除会话，释放资源"""
+    from web.app import sessions
+
+    sdata = sessions.get(session_id)
+    if not sdata:
+        raise HTTPException(404, "Session not found")
+
+    # 停止正在运行的任务
+    task = sdata.get("task")
+    if task and not task.done():
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+    # 从字典中删除
+    del sessions[session_id]
+    return {"status": "deleted"}

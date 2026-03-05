@@ -77,7 +77,18 @@ class ConfigValidator:
     
     @staticmethod
     def load_config(path: str | None = None) -> Dict[str, Any]:
-        path = path or DEFAULT_CONFIG_PATH
+        """加载配置文件。
+
+        Args:
+            path: 配置文件路径。如果为 None，使用 DEFAULT_CONFIG_PATH（不推荐，仅用于向后兼容）。
+                  多实例环境下应使用 slot.get_config_path(slot_id) 获取路径。
+        """
+        if path is None:
+            from utils.logger import get_logger
+            logger = get_logger()
+            logger.warning(f"load_config() called without path, using DEFAULT_CONFIG_PATH: {DEFAULT_CONFIG_PATH}")
+            path = DEFAULT_CONFIG_PATH
+
         if not os.path.exists(path):
             import copy
             default = copy.deepcopy(ConfigValidator.DEFAULT_CONFIG)
@@ -188,10 +199,14 @@ class ConfigValidator:
 
         if "warmup" in config:
             validated["warmup"] = config["warmup"]
-        
+
+        # 保留 bots 配置（机器人通知）
+        if "bots" in config:
+            validated["bots"] = config["bots"]
+
         if strict:
             ConfigValidator._validate_required_fields(validated)
-        
+
         return validated
     
     @staticmethod
@@ -207,7 +222,20 @@ class ConfigValidator:
     
     @staticmethod
     def save_config(config: Dict[str, Any], path: str | None = None) -> None:
-        path = os.path.abspath(path or DEFAULT_CONFIG_PATH)
+        """保存配置到文件。
+
+        Args:
+            config: 配置字典
+            path: 配置文件路径。如果为 None，使用 DEFAULT_CONFIG_PATH（不推荐，仅用于向后兼容）。
+                  多实例环境下应使用 slot.get_config_path(slot_id) 获取路径。
+        """
+        if path is None:
+            from utils.logger import get_logger
+            logger = get_logger()
+            logger.warning(f"save_config() called without path, using DEFAULT_CONFIG_PATH: {DEFAULT_CONFIG_PATH}")
+            path = DEFAULT_CONFIG_PATH
+
+        path = os.path.abspath(path)
         tmp = path + ".tmp"
         with open(tmp, "w", encoding="utf-8") as f:
             yaml.dump(config, f, allow_unicode=True, sort_keys=False)

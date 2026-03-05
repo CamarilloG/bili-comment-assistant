@@ -46,11 +46,17 @@ async def auth_status(slot: str = Query("0", alias="slot")):
 
 @router.post("/check")
 async def check_login(slot: str = Query("0", alias="slot")):
-    state = _get_auth_state(slot)
-    if state["checking"]:
-        return {"status": "already_checking"}
+    # 验证 slot ID 防止路径遍历
+    if not slot.isdigit():
+        raise HTTPException(400, "Invalid slot ID")
 
-    state["checking"] = True
+    state = _get_auth_state(slot)
+
+    # 在锁内检查和设置状态，防止竞态条件
+    with _auth_state_lock:
+        if state["checking"]:
+            return {"status": "already_checking"}
+        state["checking"] = True
 
     def _check():
         try:
@@ -63,7 +69,8 @@ async def check_login(slot: str = Query("0", alias="slot")):
             config = ConfigValidator.load_config(config_path)
             launch_args = backend_main.get_browser_launch_args(config)
             if not launch_args:
-                state["logged_in"] = False
+                with _auth_state_lock:
+                    state["logged_in"] = False
                 return
 
             with sync_playwright() as p:
@@ -75,13 +82,18 @@ async def check_login(slot: str = Query("0", alias="slot")):
                 if os.path.exists(cookie_path):
                     with open(cookie_path, "r", encoding="utf-8") as f:
                         context.add_cookies(json.load(f))
-                state["logged_in"] = auth._check_login_status()
+                logged_in = auth._check_login_status()
                 browser.close()
+
+                with _auth_state_lock:
+                    state["logged_in"] = logged_in
         except Exception as e:
             logger.error(f"Login check failed: {e}")
-            state["logged_in"] = False
+            with _auth_state_lock:
+                state["logged_in"] = False
         finally:
-            state["checking"] = False
+            with _auth_state_lock:
+                state["checking"] = False
 
     threading.Thread(target=_check, daemon=True).start()
     return {"status": "checking"}
@@ -89,11 +101,17 @@ async def check_login(slot: str = Query("0", alias="slot")):
 
 @router.post("/qrcode")
 async def qr_login(slot: str = Query("0", alias="slot")):
-    state = _get_auth_state(slot)
-    if state["qr_login_running"]:
-        return {"status": "already_running"}
+    # 验证 slot ID 防止路径遍历
+    if not slot.isdigit():
+        raise HTTPException(400, "Invalid slot ID")
 
-    state["qr_login_running"] = True
+    state = _get_auth_state(slot)
+
+    # 在锁内检查和设置状态，防止竞态条件
+    with _auth_state_lock:
+        if state["qr_login_running"]:
+            return {"status": "already_running"}
+        state["qr_login_running"] = True
 
     def _login():
         try:
@@ -116,12 +134,15 @@ async def qr_login(slot: str = Query("0", alias="slot")):
 
                 auth = AuthManager(context, cookie_path, qrcode_path=qrcode_path)
                 result = auth._qr_login()
-                state["logged_in"] = result
                 browser.close()
+
+                with _auth_state_lock:
+                    state["logged_in"] = result
         except Exception as e:
             logger.error(f"QR login failed: {e}")
         finally:
-            state["qr_login_running"] = False
+            with _auth_state_lock:
+                state["qr_login_running"] = False
 
     threading.Thread(target=_login, daemon=True).start()
     return {"status": "started"}

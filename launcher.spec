@@ -4,7 +4,7 @@ block_cipher = None
 
 a = Analysis(
     ['app\\launcher_gui.py'],
-    pathex=[],
+    pathex=['app'],
     binaries=[],
     datas=[
         ('app\\web\\frontend-v2\\dist', 'web\\frontend-v2\\dist'),
@@ -12,8 +12,10 @@ a = Analysis(
         ('app\\core\\models_config.yaml', 'core'),
         ('app\\config.template.yaml', '.'),
         ('app\\license', 'license'),
+        ('app\\main.py', '.'),
     ],
     hiddenimports=[
+        'main',
         'web.app',
         'web.routers.instances_api',
         'web.routers.model_router_api',
@@ -113,7 +115,7 @@ exe = EXE(
     a.zipfiles,
     a.datas,
     [],
-    name='BiliBotLauncher_v3.8',
+    name='BiliBotLauncher_v3.10',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -127,5 +129,5 @@ exe = EXE(
     codesign_identity=None,
     entitlements_file=None,
     version='version_info.txt',  # 添加版本信息
-    icon=r'F:\AI+program\bili-bot\eap8r-x2i41-001.ico', 
+    icon=r'F:\AI+program\bili-bot\eap8r-x2i41-001.ico',
 )

@@ -13,7 +13,11 @@ from modules.base import (
 
 
 class ConfigModule(IModule):
-    """Wraps core.config.ConfigValidator as a standardised IModule."""
+    """Wraps core.config.ConfigValidator as a standardised IModule.
+
+    注意：此模块的 path 参数默认为相对路径 "config.yaml"。
+    在多实例环境下，调用者应使用 slot.get_config_path(slot_id) 获取绝对路径。
+    """
 
     def get_capability(self) -> ModuleCapability:
         return ModuleCapability(

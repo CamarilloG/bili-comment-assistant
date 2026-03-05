@@ -24,6 +24,7 @@ from modules.config_module import ConfigModule
 from modules.notify_module import NotifyModule
 from modules.report_module import ReportModule
 from modules.bot_module import BotModule
+from douyin import DouyinModule
 from ai_center.event_bus import EventBus
 from ai_center.state_machine import TaskStateMachine
 from ai_center.model_router import ModelRouter, ModelRouterConfig, ProviderConfig, ModelRoute
@@ -67,6 +68,7 @@ def _register_modules(config: Dict[str, Any] | None = None) -> None:
     registry.register("notify", NotifyModule())
     registry.register("report", ReportModule())
     registry.register("bot", BotModule())
+    registry.register("douyin", DouyinModule())
     registry.register("browser_pool", BrowserPoolModule(browser_pool))
 
 
@@ -79,9 +81,9 @@ def _init_ai_center(config: Dict[str, Any] | None = None) -> None:
     model_cfg = get_model_by_id(model_id) if model_id else None
     has_valid_key = bool(model_cfg and (model_cfg.get("api_key") or "").strip())
     if not has_valid_key:
-        logger.warning("AI ????????? API Key??? config ? models_config ???")
-    if has_valid_key and model_cfg:
-        ai_cfg = config["ai"]
+        logger.warning("AI 中心未初始化：未找到有效 API Key，请检查 config 或 models_config 配置")
+    if has_valid_key and model_cfg and config:
+        ai_cfg = config.get("ai", {})
         timeout = max(5, int(ai_cfg.get("timeout", 30)))
         max_retries = max(0, int(ai_cfg.get("max_retries", 2)))
         router_cfg = ModelRouterConfig(
@@ -116,7 +118,11 @@ async def lifespan(app: FastAPI):
     logger.info("Starting AI Control Center...")
     try:
         from core.config import ConfigValidator
-        config = ConfigValidator.load_config()
+        from core.slot import get_config_path, ensure_slot_dir
+        # 使用槽位 0 的配置路径（用户数据目录）
+        ensure_slot_dir("0")
+        config_path = get_config_path("0")
+        config = ConfigValidator.load_config(config_path)
     except Exception:
         config = {}
 
@@ -150,7 +156,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Bilibili Comment Assistant ??AI Control Center",
+    title="Bilibili Comment Assistant - AI Control Center",
     version="3.6.0",
     lifespan=lifespan,
 )
@@ -175,6 +181,7 @@ from web.routers.log_api import router as log_api_router
 from web.routers.file_api import router as file_api_router
 from web.routers.instances_api import router as instances_api_router
 from web.routers.notification_api import router as notification_api_router
+from web.routers.bot_api import router as bot_api_router
 from web.websocket.ws_handler import router as ws_router
 
 app.include_router(session_router, prefix="/api/session", tags=["session"])
@@ -188,9 +195,10 @@ app.include_router(auth_api_router, prefix="/api/auth", tags=["auth"])
 app.include_router(log_api_router)
 app.include_router(file_api_router, prefix="/api/file", tags=["file"])
 app.include_router(notification_api_router)
+app.include_router(bot_api_router, prefix="/api/bot", tags=["bot"])
 app.include_router(ws_router)
 
-# ??????PyInstaller ???? _MEIPASS ???????????????
+# 处理 PyInstaller 打包后的 _MEIPASS 路径（前端资源路径）
 if getattr(sys, "frozen", False):
     _web_base = os.path.join(sys._MEIPASS, "web")
 else:
@@ -201,10 +209,10 @@ panel_index_path = os.path.join(panel_dir, "index.html")
 
 @app.get("/.well-known/appspecific/com.chrome.devtools.json")
 async def chrome_devtools_well_known() -> Dict[str, Any]:
-    """Chrome DevTools ????????????? JSON ?? 404?"""
+    """Chrome DevTools 协议端点，返回空 JSON 避免 404 错误"""
     return {}
 
-# Panel SPA???? /panel/assets????/panel??panel/xxx ?? index.html?????? /panel/ai ????404??
+# Panel SPA 路由：先挂载 /panel/assets 静态文件，然后将 /panel 和 panel/xxx 都返回 index.html，这样前端路由 /panel/ai 才不会 404
 if os.path.isdir(panel_dir):
     if os.path.isdir(panel_assets_dir):
         app.mount("/panel/assets", StaticFiles(directory=panel_assets_dir), name="panel_assets")
@@ -219,12 +227,12 @@ if os.path.isdir(panel_dir):
 
     @app.get("/panel/{full_path:path}")
     async def panel_spa_fallback(full_path: str):
-        # /panel/assets/* ???? mount ????????
+        # /panel/assets/* 已经被 mount 处理，这里处理其他路径
         if os.path.exists(panel_index_path):
             return FileResponse(panel_index_path, media_type="text/html")
         return {"error": "Panel not built"}
 
-# ?? frontend ?? /app????mount("/") ?? /ws??api????????WebSocket ????
+# 旧版 frontend 目录（如果 /app 路径需要挂载 mount("/") 但要避免 /ws 等 api 路径被覆盖，WebSocket 路由需要优先）
 frontend_dir = os.path.join(_web_base, "frontend")
 if os.path.isdir(frontend_dir):
     app.mount("/app", StaticFiles(directory=frontend_dir, html=True), name="frontend")
@@ -232,6 +240,13 @@ if os.path.isdir(frontend_dir):
 
 def start_web_server(host: str = "0.0.0.0", port: int = 9527) -> None:
     import uvicorn
+    import asyncio
+    import sys
+
+    # Python 3.13 兼容性：使用 asyncio.WindowsSelectorEventLoopPolicy
+    if sys.platform == 'win32' and sys.version_info >= (3, 13):
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
     log_config = {
         "version": 1,
         "disable_existing_loggers": False,

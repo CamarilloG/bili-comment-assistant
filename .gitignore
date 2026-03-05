@@ -21,9 +21,12 @@ keys/
 build/
 python/
 
-# ----- 本地配置与敏感文件 -----
+# ----- 本地配置与敏感文件（含 API 密钥，勿提交） -----
 app/config.yaml
+app/core/models_config.yaml
 app/cookies.json
+用户数据/
+**/douyin_cookies.json
 app/comment_log.csv
 app/history.json
 app/login_qrcode.png
@@ -34,6 +37,9 @@ app/instances/
 # ----- 日志 -----
 **/logs/
 *.log
+
+# ----- 调试快照 -----
+debug_snapshots/
 
 # ----- IDE / OS -----
 .idea/

@@ -56,11 +56,12 @@ class AIFilterModule(IModule):
 
     def _build_manager(self, criteria: str) -> Any:
         from core.ai_manager import AIManager
+        import copy
 
-        cfg = dict(self._config)
-        ai_section = dict(cfg.get("ai", {}))
+        cfg = copy.deepcopy(self._config)
+        ai_section = cfg.get("ai", {})
         ai_section["enabled"] = True
-        filter_section = dict(ai_section.get("filter", {}))
+        filter_section = ai_section.get("filter", {})
         filter_section["enabled"] = True
         filter_section["criteria"] = criteria
         ai_section["filter"] = filter_section
@@ -81,6 +82,8 @@ class AIFilterModule(IModule):
                 return ActionResult(success=True, data={"keep": keep, "reason": reason})
 
             if action == "batch_filter":
+                # TODO: 添加取消机制 - 需要在 ExecutionContext 中添加 stop_event
+                # 当前实现：批量操作无法中途取消
                 results: List[Dict[str, Any]] = []
                 for v in params["video_list"]:
                     keep, reason = mgr.check_video_relevance(v)

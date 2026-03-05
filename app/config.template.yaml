@@ -77,6 +77,22 @@ bots:
     api_url: "http://localhost:5700"
     access_token: ""
     target_group: ""
+  baidu:
+    enabled: false
+    api_url: "http://apiin.im.baidu.com/api/msg/groupmsgsend"
+    access_token: ""
+    group_id: ""
+    # 消息通知类型配置
+    notifications:
+      captcha_alert: true          # 验证码提醒
+      captcha_cooldown: true       # 验证码冷却通知
+      captcha_terminated: true     # 验证码达上限通知
+      cd_limit: true               # CD 限制通知
+      comment_success: false       # 评论成功通知（建议关闭，太频繁）
+      comment_failed: true         # 评论失败通知
+      task_started: true           # 任务开始通知
+      task_completed: true         # 任务完成通知
+      task_error: true             # 任务错误通知
 warmup:
   basic:
     duration_minutes: 30
@@ -97,3 +113,8 @@ warmup:
     probability: 0.1
     type: template
   source: recommend
+  # 大间隔自动养号配置
+  auto_warmup_on_large_interval:
+    enabled: true                # 是否开启大间隔自动养号
+    threshold_seconds: 180       # 触发养号的最小间隔（秒），默认 3 分钟
+    # duration_minutes: auto     # 养号时长（分钟），默认 auto 表示使用实际间隔时长

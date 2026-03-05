@@ -4,15 +4,18 @@ import { useRouter } from 'vue-router'
 import { useConfigStore } from '../stores/config'
 import { useTaskStore } from '../stores/task'
 import { useSlotStore } from '../stores/slot'
+import { useAlertModalStore } from '../stores/alertModal'
 import { taskApi, authApi } from '../api'
 
 const router = useRouter()
 const configStore = useConfigStore()
 const taskStore = useTaskStore()
 const slotStore = useSlotStore()
+const alertModal = useAlertModalStore()
 
 const mode = ref('comment')
 const loginStatus = ref(null)
+const starting = ref(false)
 
 const isCommentRunning = computed(() => taskStore.isCommentRunning)
 const isWarmupRunning = computed(() => taskStore.isWarmupRunning)
@@ -44,21 +47,62 @@ async function checkAuth() {
 }
 
 async function startTask() {
-  if (isAnyRunning.value) return
-  const slot = slotStore.currentSlot
+  console.log('[DEBUG] startTask 被调用')
+  console.log('[DEBUG] isAnyRunning:', isAnyRunning.value)
+  console.log('[DEBUG] starting:', starting.value)
+  console.log('[DEBUG] mode:', mode.value)
 
-  if (mode.value === 'comment') {
-    // 普通评论模式：仅使用模板评论与普通图片配置
-    await taskApi.startComment(slot, 'comment')
-  } else if (mode.value === 'ai_comment') {
-    // AI 增强模式：评论与图片由 AI 配置接管，可选启用智能筛选
-    await taskApi.startComment(slot, 'ai')
-  } else if (mode.value === 'warmup') {
-    await taskApi.startWarmup(slot)
+  if (isAnyRunning.value) {
+    console.log('[DEBUG] 任务已在运行，返回')
+    return
+  }
+  if (starting.value) {
+    console.log('[DEBUG] 正在启动中，返回')
+    return // 防止重复点击
   }
 
-  taskStore.pollCommentStatus(slot)
-  taskStore.pollWarmupStatus(slot)
+  const slot = slotStore.currentSlot
+  console.log('[DEBUG] slot:', slot)
+  starting.value = true
+
+  try {
+    let response
+    console.log('[DEBUG] 准备调用 API...')
+    if (mode.value === 'comment') {
+      // 普通评论模式：仅使用模板评论与普通图片配置
+      console.log('[DEBUG] 调用 startComment(comment)')
+      response = await taskApi.startComment(slot, 'comment')
+    } else if (mode.value === 'ai_comment') {
+      // AI 增强模式：评论与图片由 AI 配置接管，可选启用智能筛选
+      console.log('[DEBUG] 调用 startComment(ai)')
+      response = await taskApi.startComment(slot, 'ai')
+    } else if (mode.value === 'warmup') {
+      console.log('[DEBUG] 调用 startWarmup')
+      response = await taskApi.startWarmup(slot)
+    }
+    console.log('[DEBUG] API 响应:', response)
+
+    // 检查响应状态
+    if (response?.data?.status === 'error') {
+      console.log('[DEBUG] API 返回错误:', response.data.message)
+      alertModal.error('启动失败: ' + (response.data.message || '未知错误'))
+      return
+    }
+
+    console.log('[DEBUG] 启动成功，开始轮询状态')
+    // 启动成功，开始轮询状态
+    taskStore.pollCommentStatus(slot)
+    taskStore.pollWarmupStatus(slot)
+
+  } catch (e) {
+    console.error('[DEBUG] 启动任务异常:', e)
+    console.error('启动任务失败:', e)
+    const msg = e?.response?.data?.detail || e?.response?.data?.message || e?.message || String(e)
+    alertModal.error('启动失败: ' + (Array.isArray(msg) ? msg.join(', ') : msg))
+  } finally {
+    console.log('[DEBUG] starting 设置为 false')
+    starting.value = false
+  }
 }
 
 async function stopTask() {
@@ -125,11 +169,11 @@ const modes = [
       <div class="flex gap-3 mt-5">
         <button
           @click="startTask"
-          :disabled="isAnyRunning"
+          :disabled="isAnyRunning || starting"
           class="flex-1 py-2.5 rounded-xl text-sm font-medium text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           :class="mode === 'warmup' ? 'bg-orange-500 hover:bg-orange-600' : mode === 'ai_comment' ? 'bg-purple-600 hover:bg-purple-700' : 'bg-blue-600 hover:bg-blue-700'"
         >
-          {{ isAnyRunning ? '运行中...' : '开始任务' }}
+          {{ starting ? '启动中...' : isAnyRunning ? '运行中...' : '开始任务' }}
         </button>
         <button
           @click="stopTask"

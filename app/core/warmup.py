@@ -8,14 +8,15 @@ from core.context import context as global_context
 from core.captcha_check import check_captcha_on_page
 
 class WarmupManager:
-    def __init__(self, context: BrowserContext, config: dict, captcha_notifier: Optional[object] = None):
+    def __init__(self, context: BrowserContext, config: dict, captcha_notifier: Optional[object] = None, reuse_page: Optional[Page] = None):
         self.context = context
         self.config = config
         self.warmup_config = config.get('warmup', {})
         self.captcha_notifier = captcha_notifier
+        self.reuse_page = reuse_page  # 可选：复用现有页面，避免弹出新窗口
         self.running = True
         self._stop_event = threading.Event()
-        
+
         # Stats
         self.watched_count = 0
         self.total_time_seconds = 0
@@ -54,12 +55,21 @@ class WarmupManager:
         duration_minutes = duration_override if duration_override is not None else self.warmup_config.get('basic', {}).get('duration_minutes', 30)
         max_videos = self.warmup_config.get('basic', {}).get('max_videos', 20)
         end_time = time.time() + (duration_minutes * 60)
-        
+
         logger.info(f"开始养号任务，预计时长: {duration_minutes} 分钟，目标视频数: {max_videos}")
-        
-        page = self.context.new_page()
+
+        # 优先复用现有页面，避免弹出新窗口打扰用户
+        if self.reuse_page:
+            page = self.reuse_page
+            should_close_page = False
+            logger.debug("[养号] 复用现有浏览器页面，不弹出新窗口")
+        else:
+            page = self.context.new_page()
+            should_close_page = True
+            logger.debug("[养号] 创建新浏览器页面")
+
         global_context.page = page
-        
+
         try:
             is_first_visit = True
             
@@ -95,7 +105,12 @@ class WarmupManager:
                     logger.error("多次尝试后仍未找到推荐视频，等待后重试...")
                     if self._interruptible_sleep(10): break
                     continue
-                
+
+                # 检查列表非空后再使用 random.choice
+                if len(video_cards) == 0:
+                    logger.warning("视频卡片列表为空，跳过...")
+                    continue
+
                 target_card = random.choice(video_cards)
                 video_title, video_url = self._extract_video_info(target_card)
                 
@@ -126,7 +141,12 @@ class WarmupManager:
         except Exception as e:
             logger.error(f"养号过程中发生错误: {e}")
         finally:
-            page.close()
+            # 只关闭自己创建的页面，复用的页面由调用方管理
+            if should_close_page:
+                page.close()
+                logger.debug("[养号] 关闭养号页面")
+            else:
+                logger.debug("[养号] 保留复用的页面，由调用方管理")
             logger.info(f"养号任务结束。共观看 {self.watched_count} 个视频，累计时长 {self.total_time_seconds / 60:.1f} 分钟。")
 
     def _wait_for_video_cards(self, page: Page, timeout=15000):
@@ -137,7 +157,18 @@ class WarmupManager:
         ]
         for selector in selectors:
             try:
+                # 检查停止信号
+                if self._stop_event.is_set():
+                    logger.debug("[养号] 等待视频卡片前检测到停止信号")
+                    return []
+
                 page.wait_for_selector(selector, timeout=timeout)
+
+                # 检查停止信号
+                if self._stop_event.is_set():
+                    logger.debug("[养号] 等待视频卡片后检测到停止信号")
+                    return []
+
                 cards = page.query_selector_all(selector)
                 if cards:
                     logger.debug(f"通过选择器 '{selector}' 找到 {len(cards)} 个视频卡片")

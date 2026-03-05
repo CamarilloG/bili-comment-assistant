@@ -13,7 +13,11 @@ from modules.base import (
 
 
 class AuthModule(IModule):
-    """Wraps core.auth.AuthManager as a standardised IModule."""
+    """Wraps core.auth.AuthManager as a standardised IModule.
+
+    注意：此模块的 cookie_file 和 path 参数默认为相对路径 "cookies.json"。
+    在多实例环境下，调用者应使用 slot.get_cookie_path(slot_id) 获取绝对路径。
+    """
 
     def __init__(self) -> None:
         self._browser_context = None

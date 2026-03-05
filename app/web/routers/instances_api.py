@@ -63,9 +63,18 @@ async def add_instance():
 async def delete_instance(slot_id: str):
     """删除指定的实例槽位。"""
     try:
+        # 检查实例是否正在运行
+        is_running = _get_slot_running_status(slot_id)
+        if is_running:
+            raise HTTPException(
+                status_code=409,
+                detail=f"实例 {slot_id} 正在运行任务，无法删除。请先停止任务。"
+            )
+
         success = delete_slot(slot_id)
         if not success:
             raise HTTPException(status_code=404, detail=f"实例 {slot_id} 不存在")
+
         ids = list_slot_ids()
         slots = []
         for sid in ids:

@@ -41,27 +41,9 @@ class WarmupModule(IModule):
                     estimated_duration="slow",
                     risk_level="safe",
                 ),
-                ActionSpec(
-                    name="watch_single_video",
-                    description="观看单个视频",
-                    parameters={
-                        "url": ParamSpec(type="string", description="视频URL"),
-                        "watch_time": ParamSpec(type="int", description="观看秒数", required=False, default=60),
-                    },
-                    returns={"watched": "bool", "duration": "int"},
-                    estimated_duration="slow",
-                    risk_level="safe",
-                ),
-                ActionSpec(
-                    name="like_video",
-                    description="给当前视频点赞",
-                    parameters={
-                        "url": ParamSpec(type="string", description="视频URL"),
-                    },
-                    returns={"liked": "bool"},
-                    estimated_duration="fast",
-                    risk_level="safe",
-                ),
+                # FIXME: watch_single_video 和 like_video 暂时禁用（同步/异步混用问题）
+                # ActionSpec(name="watch_single_video", ...),
+                # ActionSpec(name="like_video", ...),
             ],
             requires_browser=True,
             requires_auth=True,
@@ -93,30 +75,12 @@ class WarmupModule(IModule):
                     },
                 )
 
-            if action == "watch_single_video":
-                mgr = WarmupManager(self._browser_context, self._config)
-                page = await self._browser_context.new_page()
-                try:
-                    mgr._watch_video(page, params["url"], "single", None)
-                    return ActionResult(
-                        success=True,
-                        data={
-                            "watched": True,
-                            "duration": int(mgr.total_time_seconds),
-                        },
-                    )
-                finally:
-                    await page.close()
-
-            if action == "like_video":
-                mgr = WarmupManager(self._browser_context, self._config)
-                page = await self._browser_context.new_page()
-                try:
-                    await page.goto(params["url"], wait_until="domcontentloaded")
-                    liked = mgr._like_video(page)
-                    return ActionResult(success=liked, data={"liked": liked})
-                finally:
-                    await page.close()
+            # FIXME: watch_single_video 和 like_video 混用了同步/异步 Playwright API
+            # WarmupManager 使用同步 API，但这里使用 await，需要重构
+            # if action == "watch_single_video":
+            #     ...
+            # if action == "like_video":
+            #     ...
 
         except Exception as exc:
             return ActionResult(success=False, error=str(exc))

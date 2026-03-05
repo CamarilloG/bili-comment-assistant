@@ -59,11 +59,12 @@ class AIGenModule(IModule):
 
     def _build_manager(self, params: Dict[str, Any]) -> Any:
         from core.ai_manager import AIManager
+        import copy
 
-        cfg = dict(self._config)
-        ai_section = dict(cfg.get("ai", {}))
+        cfg = copy.deepcopy(self._config)
+        ai_section = cfg.get("ai", {})
         ai_section["enabled"] = True
-        comment_section = dict(ai_section.get("comment", {}))
+        comment_section = ai_section.get("comment", {})
         comment_section["enabled"] = True
         if params.get("persona"):
             comment_section["user_intent"] = params["persona"]
@@ -90,6 +91,8 @@ class AIGenModule(IModule):
                 return ActionResult(success=False, error="AI comment generation returned empty")
 
             if action == "generate_batch_comments":
+                # TODO: 添加取消机制 - 需要在 ExecutionContext 中添加 stop_event
+                # 当前实现：批量操作无法中途取消
                 results: List[Dict[str, str]] = []
                 for v in params["video_list"]:
                     text = mgr.generate_comment(v)

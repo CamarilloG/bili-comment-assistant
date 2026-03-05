@@ -1,0 +1,20 @@
+# 模型列表：id 唯一，model_name 用于前端展示与下拉选择
+# api_type: openai | openrouter，用于代码适配
+# 使用前请复制为 models_config.yaml 并填入自己的 api_key，勿提交 models_config.yaml
+# api_key 可写明文，或密文：运行 python -m app.core.encode_api_key "你的key" 得到 enc:xxx 后粘贴到此处
+models:
+  - id: deepseek_chat
+    model_name: DeepSeek Chat
+    model: deepseek-chat
+    base_url: https://api.deepseek.com/v1
+    api_key: ""
+    price: ""
+    api_type: openai
+
+  - id: openrouter_example
+    model_name: OpenRouter 示例
+    model: openai/gpt-4o-mini
+    base_url: https://openrouter.ai/api/v1
+    api_key: ""
+    price: ""
+    api_type: openai

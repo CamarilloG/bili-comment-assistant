@@ -17,7 +17,11 @@ from modules.base import (
 
 
 class ReportModule(IModule):
-    """Session-level result logging and CSV export."""
+    """Session-level result logging and CSV export.
+
+    注意：export_csv 的 path 参数默认为相对路径 "comment_log.csv"。
+    在多实例环境下，调用者应使用 slot.get_comment_log_path(slot_id) 获取绝对路径。
+    """
 
     def __init__(self) -> None:
         self._records: Dict[str, List[Dict[str, Any]]] = {}  # session_id -> records

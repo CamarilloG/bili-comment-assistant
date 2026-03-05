@@ -298,6 +298,23 @@ class LauncherGUI:
             messagebox.showinfo("提示", "后端服务已在运行中")
             return
 
+        # 检查后端线程是否还在运行
+        if self.backend_thread and self.backend_thread.is_alive():
+            messagebox.showwarning("提示", "后端服务正在停止中，请稍后再试")
+            return
+
+        # 检查端口是否被占用
+        if self._is_port_in_use(PORT):
+            self.log(f"错误: 端口 {PORT} 已被占用")
+            response = messagebox.askyesno(
+                "端口占用",
+                f"端口 {PORT} 已被占用\n\n可能是上次服务未完全关闭\n是否等待 3 秒后重试？"
+            )
+            if response:
+                self.log("等待 3 秒后重试...")
+                self.root.after(3000, self.start_backend)
+            return
+
         self.log("正在启动后端服务...")
         self.start_btn.config(state=DISABLED)
 
@@ -305,8 +322,20 @@ class LauncherGUI:
         self.backend_thread = threading.Thread(target=self._run_backend, daemon=True)
         self.backend_thread.start()
 
-        # 等待后端启动
-        self.root.after(2000, self._check_backend_started)
+        # 轮询等待后端启动（import web.app 等可能需数秒）
+        self._backend_check_count = 0
+        self._backend_check_max = 10  # 最多等约 15 秒
+        self.root.after(1500, self._check_backend_started)
+
+    def _is_port_in_use(self, port):
+        """检查端口是否被占用"""
+        import socket
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            try:
+                s.bind(("0.0.0.0", port))
+                return False
+            except OSError:
+                return True
 
     def _run_backend(self):
         """在后台线程运行后端服务"""
@@ -344,38 +373,68 @@ class LauncherGUI:
             # 运行 server（阻塞）
             self.backend_server.run()
 
+            # Server 正常退出
+            self.root.after(0, lambda: self.log("uvicorn server 已退出"))
+
         except ImportError as e:
-            error_msg = f"模块导入失败: {e}\n模块路径: {sys.path}"
             self.backend_running = False
+            err_short = f"后端导入失败: {e}"
+            error_msg = f"{err_short}\n模块路径: {sys.path}\n{traceback.format_exc()}"
+            self.root.after(0, lambda: self.log(err_short))
             self.root.after(0, lambda: self.log(error_msg))
             self.root.after(0, lambda: messagebox.showerror("导入失败", f"后端模块导入失败:\n{e}\n\n请检查是否缺少依赖库"))
             traceback.print_exc()
         except Exception as e:
-            error_msg = f"后端启动失败: {e}\n{traceback.format_exc()}"
             self.backend_running = False
+            err_short = f"后端启动失败: {e}"
+            error_msg = f"{err_short}\n{traceback.format_exc()}"
+            self.root.after(0, lambda: self.log(err_short))
             self.root.after(0, lambda: self.log(error_msg))
             self.root.after(0, lambda: messagebox.showerror("启动失败", f"后端服务启动失败:\n{e}"))
             traceback.print_exc()
         finally:
+            # 确保清理状态
             self.backend_running = False
+            if self.backend_server:
+                try:
+                    # 确保 server 完全关闭
+                    self.backend_server.should_exit = True
+                except Exception:
+                    pass
             self.backend_server = None
+            self.root.after(0, lambda: self.log("后端线程已清理完成"))
 
     def _check_backend_started(self):
-        """检查后端是否启动成功"""
+        """轮询检查后端是否启动成功"""
         if self.backend_running:
-            url = f"http://localhost:{PORT}/panel/"
-            self.log(f"后端服务已启动")
-            self.log(f"请访问以下地址进入控制台:")
-            self.log(f"  {url}")
-            self.backend_status.config(text="运行中 ✓", bootstyle="success")
-            self.stop_btn.config(state=NORMAL)
-            self.open_web_btn.config(state=NORMAL)
+            # 实际检查端口是否可访问
+            import socket
+            try:
+                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                    s.settimeout(1)
+                    s.connect(("127.0.0.1", PORT))
+                # 端口可访问，后端已启动
+                url = f"http://localhost:{PORT}/panel/"
+                self.log("后端服务已启动")
+                self.log("请访问以下地址进入控制台:")
+                self.log(f"  {url}")
+                self.backend_status.config(text="运行中 ✓", bootstyle="success")
+                self.stop_btn.config(state=NORMAL)
+                self.open_web_btn.config(state=NORMAL)
+                self.root.after(500, self.open_web_panel)
+                return
+            except (socket.error, socket.timeout):
+                # 端口还未就绪，继续等待
+                pass
 
-            # 自动打开 Web 面板（仅一次）
-            self.root.after(500, self.open_web_panel)
-        else:
-            self.log("后端服务启动失败")
+        self._backend_check_count = getattr(self, "_backend_check_count", 0) + 1
+        if self._backend_check_count >= getattr(self, "_backend_check_max", 10):
+            self.log("后端服务启动失败（超时或启动过程出错，请查看上方日志）")
+            self.backend_running = False
             self.start_btn.config(state=NORMAL)
+            return
+        # 每 1.5 秒再检查一次
+        self.root.after(1500, self._check_backend_started)
 
     def open_web_panel(self):
         """打开 Web 面板"""
@@ -392,6 +451,9 @@ class LauncherGUI:
     def stop_backend(self):
         """停止后端服务"""
         self.log("正在停止后端服务...")
+        self.stop_btn.config(state=DISABLED)
+
+        # 设置停止标志
         self.backend_running = False
 
         # 停止 uvicorn server
@@ -402,8 +464,31 @@ class LauncherGUI:
             except Exception as e:
                 self.log(f"停止服务时出错: {e}")
 
+        # 等待后端线程结束
+        if self.backend_thread and self.backend_thread.is_alive():
+            self.log("等待后端线程结束...")
+            # 在新线程中等待，避免阻塞 GUI
+            def wait_thread():
+                try:
+                    # 增加超时时间到 10 秒，uvicorn 需要时间优雅关闭
+                    self.backend_thread.join(timeout=10)
+                    if self.backend_thread.is_alive():
+                        self.root.after(0, lambda: self.log("警告: 后端线程未能在 10 秒内结束，已强制继续"))
+                        self.root.after(0, lambda: self.log("提示: 如需重启，请等待几秒后再点击启动"))
+                    else:
+                        self.root.after(0, lambda: self.log("后端线程已正常结束"))
+                except Exception as e:
+                    self.root.after(0, lambda: self.log(f"等待线程时出错: {e}"))
+                finally:
+                    self.root.after(0, self._finish_stop)
+
+            threading.Thread(target=wait_thread, daemon=True).start()
+        else:
+            self._finish_stop()
+
+    def _finish_stop(self):
+        """完成停止操作，更新 UI"""
         self.backend_status.config(text="已停止", bootstyle="secondary")
-        self.stop_btn.config(state=DISABLED)
         self.open_web_btn.config(state=DISABLED)
         self.start_btn.config(state=NORMAL)
         self.log("后端服务已停止")
@@ -429,7 +514,9 @@ def main():
     try:
         # 确保配置文件存在
         if getattr(sys, "frozen", False):
-            config_path = os.path.join(app_base, "config.yaml")
+            from core.slot import get_config_path, ensure_slot_dir
+            ensure_slot_dir("0")
+            config_path = get_config_path("0")
             if not os.path.exists(config_path):
                 try:
                     from core.config import ConfigValidator

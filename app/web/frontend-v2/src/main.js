@@ -8,6 +8,7 @@ import Dashboard from './views/Dashboard.vue'
 import CommentSettings from './views/CommentSettings.vue'
 import AISettings from './views/AISettings.vue'
 import WarmupPanel from './views/WarmupPanel.vue'
+import BotSettings from './views/BotSettings.vue'
 import BaseSettings from './views/BaseSettings.vue'
 
 const routes = [
@@ -15,6 +16,7 @@ const routes = [
   { path: '/comment', component: CommentSettings, meta: { title: '评论设置' } },
   { path: '/ai', component: AISettings, meta: { title: 'AI 设置' } },
   { path: '/warmup', component: WarmupPanel, meta: { title: '养号设置' } },
+  { path: '/bot', component: BotSettings, meta: { title: '机器人通知' } },
   { path: '/settings', component: BaseSettings, meta: { title: '基础设置' } },
 ]
 

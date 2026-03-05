@@ -13,7 +13,11 @@ from modules.base import (
 
 
 class HistoryModule(IModule):
-    """Wraps core.history.HistoryManager as a standardised IModule."""
+    """Wraps core.history.HistoryManager as a standardised IModule.
+
+    注意：此模块的 file_path 参数默认为相对路径 "history.json"。
+    在多实例环境下，调用者应使用 slot.get_history_path(slot_id) 获取绝对路径。
+    """
 
     def __init__(self, file_path: str = "history.json") -> None:
         self._file_path = file_path

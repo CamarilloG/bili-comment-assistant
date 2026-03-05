@@ -1,0 +1,42 @@
+# 模型列表：id 唯一，model_name 用于前端展示与下拉选择
+# api_type: openai | openrouter，用于代码适配
+#
+# API Key 配置说明：
+# 1. 直接填写明文 API Key（不推荐）：api_key: "sk-xxx"
+# 2. 使用 base64 编码（防止直接查看）：api_key: "enc:<base64_encoded_key>"
+#    编码方法：python -c "import base64; print('enc:' + base64.b64encode(b'your-api-key').decode())"
+# 3. 使用环境变量（推荐）：设置环境变量 MODEL_<ID大写下划线>_API_KEY
+#    例如：export MODEL_DEEPSEEK_CHAT_API_KEY="sk-xxx"
+#
+models:
+  - id: deepseek_chat
+    model_name: DeepSeek Chat
+    model: deepseek-chat
+    base_url: https://api.deepseek.com/v1
+    api_key: "YOUR_DEEPSEEK_API_KEY_HERE"
+    price: ""
+    api_type: openai
+
+  - id: x-ai/grok-4.1-fast
+    model_name: grok-4.1-fast
+    model: x-ai/grok-4.1-fast
+    base_url: https://openrouter.ai/api/v1
+    api_key: "YOUR_OPENROUTER_API_KEY_HERE"
+    price: ""
+    api_type: openai
+
+  - id: arcee-ai/trinity-large-preview:free
+    model_name: arcee-ai
+    model: arcee-ai/trinity-large-preview:free
+    base_url: https://openrouter.ai/api/v1
+    api_key: "YOUR_OPENROUTER_API_KEY_HERE"
+    price: ""
+    api_type: openai
+
+  - id: openai/gpt-oss-120b:free
+    model_name: gpt-oss
+    model: openai/gpt-oss-120b:free
+    base_url: https://openrouter.ai/api/v1
+    api_key: "YOUR_OPENROUTER_API_KEY_HERE"
+    price: ""
+    api_type: openai

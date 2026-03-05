@@ -65,14 +65,14 @@ class CommentModule(IModule):
             mgr = CommentManager(self._page)
 
             if action == "post_comment":
-                status = mgr.post_comment(
+                result, toast_message = mgr.post_comment(
                     url=params["url"],
                     text=params["text"],
                     image_path=params.get("image_path"),
                 )
                 return ActionResult(
-                    success=(status == "success"),
-                    data={"status": status},
+                    success=(result == "success"),
+                    data={"status": result, "message": toast_message},
                 )
 
             if action == "check_captcha":

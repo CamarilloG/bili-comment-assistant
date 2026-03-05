@@ -175,4 +175,5 @@ class ModelRouter:
         return list(self._providers.keys())
 
     def get_routes(self) -> Dict[str, ModelRoute]:
-        return dict(self._config.routes)
+        import copy
+        return copy.deepcopy(self._config.routes)

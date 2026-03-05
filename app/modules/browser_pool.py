@@ -88,19 +88,27 @@ class BrowserPool:
             launch_args["ignore_default_args"] = ["--no-sandbox"]
 
         browser = await self._playwright.chromium.launch(**launch_args)
-        ctx = await browser.new_context(
-            user_agent=self.config.user_agent,
-            viewport={"width": self.config.viewport_width, "height": self.config.viewport_height},
-        )
-        await ctx.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+        try:
+            ctx = await browser.new_context(
+                user_agent=self.config.user_agent,
+                viewport={"width": self.config.viewport_width, "height": self.config.viewport_height},
+            )
+            await ctx.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
 
-        meta = BrowserInstance(status=status)
-        self._browsers[meta.id] = browser
-        self._contexts[meta.id] = ctx
-        self._meta[meta.id] = meta
-        if status == "idle":
-            await self._available.put(meta.id)
-        return meta
+            meta = BrowserInstance(status=status)
+            self._browsers[meta.id] = browser
+            self._contexts[meta.id] = ctx
+            self._meta[meta.id] = meta
+            if status == "idle":
+                await self._available.put(meta.id)
+            return meta
+        except Exception:
+            # 如果 context 创建失败，关闭 browser 避免泄漏
+            try:
+                await browser.close()
+            except Exception:
+                pass
+            raise
 
     async def acquire(self, timeout: float = 30) -> BrowserInstance:
         try:

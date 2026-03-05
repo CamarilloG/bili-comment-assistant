@@ -18,6 +18,7 @@ a = Analysis(
     binaries=[],
     datas=datas,
     hiddenimports=[
+        'main',
         'uvicorn.logging',
         'uvicorn.loops',
         'uvicorn.loops.auto',
@@ -55,7 +56,7 @@ exe = EXE(
     a.zipfiles,
     a.datas,
     [],
-    name='BiliBot_Web_v3.8',
+    name='BiliBot_Web_v3.10',
     icon=f'{app_dir}/pmkix-xoym4-001.ico',
     debug=False,
     bootloader_ignore_signals=False,

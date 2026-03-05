@@ -46,7 +46,7 @@ async def get_config(slot: str = Query("0", alias="slot")):
         path = get_config_path(slot)
         config = _read_raw_config(path)
         if "ai" in config and config["ai"].get("api_key"):
-            masked = config["ai"]["api_key"]
+            masked = config["ai"].get("api_key", "")
             if masked not in ("", "YOUR_API_KEY_HERE"):
                 config["ai"]["api_key"] = "***"
         return config

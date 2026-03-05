@@ -18,11 +18,12 @@ export const taskApi = {
   /**
    * 启动评论任务。
    * mode: 'comment' | 'ai'
+   * 注意：启动任务需要较长时间（启动浏览器、登录检查等），设置 120 秒超时
    */
-  startComment: (slot, mode = 'comment') => api.post('/task/comment/start', { mode }, slotParams(slot)),
+  startComment: (slot, mode = 'comment') => api.post('/task/comment/start', { mode }, { ...slotParams(slot), timeout: 120000 }),
   stopComment: (slot) => api.post('/task/comment/stop', null, slotParams(slot)),
   commentStatus: (slot) => api.get('/task/comment/status', slotParams(slot)),
-  startWarmup: (slot) => api.post('/task/warmup/start', null, slotParams(slot)),
+  startWarmup: (slot) => api.post('/task/warmup/start', null, { ...slotParams(slot), timeout: 120000 }),
   stopWarmup: (slot) => api.post('/task/warmup/stop', null, slotParams(slot)),
   warmupStatus: (slot) => api.get('/task/warmup/status', slotParams(slot)),
 }

@@ -72,18 +72,6 @@ class AIProvider:
             return error_str[:100] + "..."
         return error_str
 
-    def _debug_log(self, payload: dict) -> None:
-        """写入本次调试会话的 AI 调用日志（不包含密钥）。"""
-        try:
-            payload.setdefault("sessionId", "829736")
-            payload.setdefault("timestamp", int(time.time() * 1000))
-            log_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "debug-829736.log"))
-            with open(log_path, "a", encoding="utf-8") as f:
-                f.write(json.dumps(payload, ensure_ascii=False) + "\n")
-        except Exception:
-            # 调试日志失败不影响主流程
-            pass
-
     def chat(
         self,
         system_prompt: str,
@@ -112,14 +100,6 @@ class AIProvider:
         }
         if prompt_version is not None:
             log_data["prompt_version"] = prompt_version
-        # #region agent log
-        self._debug_log({
-            "location": "ai_provider.py:chat:entry",
-            "message": "AI chat request",
-            "hypothesisId": "AI1",
-            "data": log_data,
-        })
-        # #endregion
 
         for attempt in range(1, self.max_retries + 2):
             try:
@@ -152,14 +132,6 @@ class AIProvider:
                 }
                 if prompt_version is not None:
                     success_data["prompt_version"] = prompt_version
-                # #region agent log
-                self._debug_log({
-                    "location": "ai_provider.py:chat:success",
-                    "message": "AI chat response",
-                    "hypothesisId": "AI2",
-                    "data": success_data,
-                })
-                # #endregion
                 return content
             except Exception as e:
                 # 简化错误信息，只记录关键信息
@@ -175,18 +147,6 @@ class AIProvider:
                     # 最后一次失败时输出详细原因
                     logger.error(f"[AI] 调用失败: {error_msg}")
 
-                # #region agent log
-                self._debug_log({
-                    "location": "ai_provider.py:chat:error",
-                    "message": "AI chat error",
-                    "hypothesisId": "AI3",
-                    "data": {
-                        "attempt": attempt,
-                        "error": str(e),
-                        "model": self.model,
-                    },
-                })
-                # #endregion
                 if attempt > self.max_retries:
                     return None
                 # 使用可配置的重试延迟，支持指数退避

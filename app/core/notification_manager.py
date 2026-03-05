@@ -1,10 +1,10 @@
 """
 全局通知系统
-支持 Web 端吐司通知和 Windows 系统通知
+支持 Web 端吐司通知、Windows 系统通知和百度机器人通知
 """
 import os
 import sys
-from typing import Literal
+from typing import Literal, Optional
 from utils.logger import get_logger
 
 logger = get_logger()
@@ -15,9 +15,29 @@ NotificationType = Literal["info", "warning", "error", "captcha", "critical"]
 class NotificationManager:
     """全局通知管理器"""
 
-    def __init__(self):
+    def __init__(self, config: Optional[dict] = None):
         self._web_callbacks = []  # Web 端通知回调
         self._failure_counts = {}  # 记录每个实例的连续失败次数
+        self._baidu_bot = None  # 百度机器人通知器
+
+        # 初始化百度机器人
+        if config:
+            self._init_baidu_bot(config)
+
+    def _init_baidu_bot(self, config: dict):
+        """初始化百度机器人通知器"""
+        try:
+            baidu_config = config.get("bots", {}).get("baidu", {})
+            if baidu_config.get("enabled", False):
+                from core.baidu_bot import BaiduBotNotifier
+                self._baidu_bot = BaiduBotNotifier(baidu_config)
+                logger.info("[通知管理器] 百度机器人已启用")
+        except Exception as e:
+            logger.error(f"[通知管理器] 初始化百度机器人失败: {e}")
+
+    def update_config(self, config: dict):
+        """更新配置（用于配置变更时重新初始化）"""
+        self._init_baidu_bot(config)
 
     def register_web_callback(self, callback):
         """注册 Web 端通知回调"""
@@ -63,6 +83,30 @@ class NotificationManager:
         if show_system:
             self._send_system_notification(title, message, notification_type)
 
+    def notify_captcha_alert(self, slot_id: str, source: str, detail: str = ""):
+        """验证码提醒（立即通知）"""
+        source_name = {"comment": "评论", "warmup": "养号", "search": "搜索"}.get(source, source)
+        title = f"实例 {slot_id} 检测到验证码"
+        message = f"在 {source_name} 过程中检测到验证码\n详情: {detail or '无'}"
+        self.send_notification(
+            title=title,
+            message=message,
+            notification_type="captcha",
+            slot_id=slot_id,
+            show_system=True,  # 验证码必须显示系统通知
+        )
+
+        # 发送百度机器人通知
+        if self._baidu_bot:
+            try:
+                self._baidu_bot.notify_captcha_alert(
+                    source=source_name,
+                    detail=detail,
+                    slot_id=int(slot_id)
+                )
+            except Exception as e:
+                logger.error(f"[通知管理器] 百度机器人通知失败: {e}")
+
     def notify_captcha(self, slot_id: str, count: int, cooldown_minutes: int):
         """验证码通知"""
         title = f"实例 {slot_id} 检测到验证码"
@@ -74,6 +118,19 @@ class NotificationManager:
             slot_id=slot_id,
             show_system=True,  # 验证码必须显示系统通知
         )
+
+        # 发送百度机器人通知
+        if self._baidu_bot:
+            try:
+                quiet_minutes = 5  # 默认静默时间
+                self._baidu_bot.notify_captcha_cooldown(
+                    count=count,
+                    cooldown_minutes=cooldown_minutes,
+                    quiet_minutes=quiet_minutes,
+                    slot_id=int(slot_id)
+                )
+            except Exception as e:
+                logger.error(f"[通知管理器] 百度机器人通知失败: {e}")
 
     def notify_failure(self, slot_id: str, reason: str):
         """记录失败，连续 3 次失败时发送通知"""
@@ -94,10 +151,115 @@ class NotificationManager:
                 show_system=True,  # 连续失败显示系统通知
             )
 
+            # 发送百度机器人通知
+            if self._baidu_bot:
+                try:
+                    self._baidu_bot.notify_comment_failed(
+                        video_title="连续失败",
+                        reason=f"已连续失败 {count} 次：{reason}",
+                        slot_id=int(slot_id)
+                    )
+                except Exception as e:
+                    logger.error(f"[通知管理器] 百度机器人通知失败: {e}")
+
     def reset_failure_count(self, slot_id: str):
         """重置失败计数（成功时调用）"""
         if slot_id in self._failure_counts:
             self._failure_counts[slot_id] = 0
+
+    def notify_comment_success(self, slot_id: str, video_title: str, comment_text: str):
+        """评论成功通知"""
+        # 不发送 Web/系统通知（太频繁），只发送百度机器人通知
+        if self._baidu_bot:
+            try:
+                self._baidu_bot.notify_comment_success(
+                    video_title=video_title,
+                    comment_text=comment_text,
+                    slot_id=int(slot_id)
+                )
+            except Exception as e:
+                logger.error(f"[通知管理器] 百度机器人通知失败: {e}")
+
+    def notify_comment_failed(self, slot_id: str, video_title: str, reason: str):
+        """单次评论失败通知（不同于连续失败）"""
+        if self._baidu_bot:
+            try:
+                self._baidu_bot.notify_comment_failed(
+                    video_title=video_title,
+                    reason=reason,
+                    slot_id=int(slot_id)
+                )
+            except Exception as e:
+                logger.error(f"[通知管理器] 百度机器人通知失败: {e}")
+
+    def notify_task_started(self, slot_id: str, task_type: str, target_count: int):
+        """任务开始通知"""
+        title = f"实例 {slot_id} 任务开始"
+        message = f"{task_type}，目标数量: {target_count}"
+        self.send_notification(
+            title=title,
+            message=message,
+            notification_type="info",
+            slot_id=slot_id,
+            show_system=False,
+        )
+
+        # 发送百度机器人通知
+        if self._baidu_bot:
+            try:
+                self._baidu_bot.notify_task_started(
+                    task_type=task_type,
+                    target_count=target_count,
+                    slot_id=int(slot_id)
+                )
+            except Exception as e:
+                logger.error(f"[通知管理器] 百度机器人通知失败: {e}")
+
+    def notify_task_completed(self, slot_id: str, task_type: str, success_count: int, total_count: int):
+        """任务完成通知"""
+        title = f"实例 {slot_id} 任务完成"
+        message = f"{task_type}，完成情况: {success_count}/{total_count}"
+        self.send_notification(
+            title=title,
+            message=message,
+            notification_type="info",
+            slot_id=slot_id,
+            show_system=True,  # 任务完成显示系统通知
+        )
+
+        # 发送百度机器人通知
+        if self._baidu_bot:
+            try:
+                self._baidu_bot.notify_task_completed(
+                    task_type=task_type,
+                    success_count=success_count,
+                    total_count=total_count,
+                    slot_id=int(slot_id)
+                )
+            except Exception as e:
+                logger.error(f"[通知管理器] 百度机器人通知失败: {e}")
+
+    def notify_cd_limit(self, slot_id: str, cd_warmup_hours: int):
+        """CD 限制通知"""
+        title = f"实例 {slot_id} 触发 CD 限制"
+        message = f"将进入 {cd_warmup_hours} 小时养号模式"
+        self.send_notification(
+            title=title,
+            message=message,
+            notification_type="warning",
+            slot_id=slot_id,
+            show_system=True,
+        )
+
+        # 发送百度机器人通知
+        if self._baidu_bot:
+            try:
+                self._baidu_bot.notify_cd_limit(
+                    cd_warmup_hours=cd_warmup_hours,
+                    slot_id=int(slot_id)
+                )
+            except Exception as e:
+                logger.error(f"[通知管理器] 百度机器人通知失败: {e}")
 
     def notify_terminated(self, slot_id: str, reason: str):
         """任务终止通知"""
@@ -110,6 +272,37 @@ class NotificationManager:
             slot_id=slot_id,
             show_system=True,  # 任务终止显示系统通知
         )
+
+        # 发送百度机器人通知
+        if self._baidu_bot:
+            try:
+                # 判断是验证码达上限还是其他原因
+                if "验证码" in reason:
+                    # 尝试解析次数
+                    import re
+                    match = re.search(r'(\d+)/(\d+)', reason)
+                    if match:
+                        count = int(match.group(1))
+                        max_count = int(match.group(2))
+                        self._baidu_bot.notify_captcha_terminated(
+                            count=count,
+                            max_count=max_count,
+                            slot_id=int(slot_id)
+                        )
+                    else:
+                        self._baidu_bot.notify_task_error(
+                            task_type="评论任务",
+                            error_message=reason,
+                            slot_id=int(slot_id)
+                        )
+                else:
+                    self._baidu_bot.notify_task_error(
+                        task_type="评论任务",
+                        error_message=reason,
+                        slot_id=int(slot_id)
+                    )
+            except Exception as e:
+                logger.error(f"[通知管理器] 百度机器人通知失败: {e}")
 
     def _send_web_notification(
         self, title: str, message: str, notification_type: NotificationType, slot_id: str

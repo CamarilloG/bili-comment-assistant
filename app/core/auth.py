@@ -75,7 +75,8 @@ class AuthManager:
                 else:
                     logger.debug("个人中心访问正常。用户已登录。")
                     return True
-            except:
+            except Exception as e:
+                logger.debug(f"访问个人中心失败: {e}")
                 return False
 
         except Exception as e:
