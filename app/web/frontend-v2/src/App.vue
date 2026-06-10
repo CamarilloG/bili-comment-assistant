@@ -1,0 +1,179 @@
+<script setup>
+import { onMounted, onUnmounted, watch } from 'vue'
+import { useConfigStore } from './stores/config'
+import { useTaskStore } from './stores/task'
+import { useSlotStore } from './stores/slot'
+import { useAlertModalStore } from './stores/alertModal'
+import { useInstanceSwitchConfirmStore } from './stores/instanceSwitchConfirm'
+import AlertModal from './components/AlertModal.vue'
+import InstanceSwitchConfirm from './components/InstanceSwitchConfirm.vue'
+import InstanceSwitcher from './components/InstanceSwitcher.vue'
+import ToastNotification from './components/ToastNotification.vue'
+
+const configStore = useConfigStore()
+const taskStore = useTaskStore()
+const slotStore = useSlotStore()
+const alertModal = useAlertModalStore()
+const switchConfirm = useInstanceSwitchConfirmStore()
+
+const navItems = [
+  { path: '/', label: '控制台', icon: 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-4 0h4' },
+  { path: '/comment', label: '评论设置', icon: 'M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z' },
+  { path: '/ai', label: 'AI 设置', icon: 'M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z' },
+  { path: '/warmup', label: '养号设置', icon: 'M17.657 18.657A8 8 0 016.343 7.343S7 9 9 10c0-2 .5-5 2.986-7C14 5 16.09 5.777 17.656 7.343A7.975 7.975 0 0120 13a7.975 7.975 0 01-2.343 5.657z' },
+  { path: '/dm', label: '私信模式', icon: 'M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z' },
+  { path: '/bot', label: '机器人通知', icon: 'M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9' },
+  { path: '/settings', label: '基础设置', icon: 'M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z' },
+]
+
+onMounted(async () => {
+  slotStore.loadSlots()
+  slotStore.startStatusPolling() // 启动实例状态轮询
+
+  // 立即加载配置和状态
+  await configStore.load(slotStore.currentSlot)
+  await Promise.all([
+    taskStore.pollCommentStatus(slotStore.currentSlot),
+    taskStore.pollWarmupStatus(slotStore.currentSlot),
+    taskStore.pollDmStatus(slotStore.currentSlot)
+  ])
+
+  // 启动轮询和日志连接
+  taskStore.startPolling(slotStore.currentSlot)
+  taskStore.connectLogs(slotStore.currentSlot)
+  taskStore.setLogsForCurrentSlot(slotStore.currentSlot)
+})
+
+watch(() => slotStore.currentSlot, async (newSlot) => {
+  // 立即加载配置
+  await configStore.load(newSlot)
+
+  // 停止旧的轮询和日志连接
+  taskStore.stopPolling()
+  taskStore.disconnectLogs()
+
+  // 立即获取一次状态（不等待轮询）
+  await Promise.all([
+    taskStore.pollCommentStatus(newSlot),
+    taskStore.pollWarmupStatus(newSlot),
+    taskStore.pollDmStatus(newSlot)
+  ])
+
+  // 启动新的轮询
+  taskStore.startPolling(newSlot)
+
+  // 连接新的日志
+  taskStore.connectLogs(newSlot)
+  taskStore.setLogsForCurrentSlot(newSlot)
+})
+
+onUnmounted(() => {
+  taskStore.stopPolling()
+  taskStore.disconnectLogs()
+  slotStore.stopStatusPolling() // 停止实例状态轮询
+})
+
+async function handleSlotChange(newSlotId) {
+  if (newSlotId === slotStore.currentSlot) {
+    return
+  }
+
+  // 执行切换（多实例支持同时运行，无需确认）
+  try {
+    // 设置切换状态，显示加载指示
+    await slotStore.setSlot(newSlotId, true)
+
+    // 等待一小段时间确保所有数据加载完成
+    // 这样用户体验更好，避免看到数据闪烁
+    await new Promise(resolve => setTimeout(resolve, 300))
+  } catch (error) {
+    alertModal.error(`切换失败: ${error.message}`)
+  }
+}
+
+async function handleAddInstance() {
+  try {
+    await slotStore.addInstance()
+  } catch (error) {
+    alertModal.error(error.response?.data?.detail || error.message || '创建实例失败')
+  }
+}
+</script>
+
+<template>
+  <div class="min-h-screen flex bg-gray-50 dark:bg-gray-950">
+    <!-- Sidebar -->
+    <aside class="w-56 bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 flex flex-col shrink-0">
+      <div class="px-5 py-5 border-b border-gray-200 dark:border-gray-800">
+        <h1 class="text-lg font-bold tracking-tight">B站评论助手</h1>
+        <p class="text-xs text-gray-500 mt-0.5">Web 控制面板</p>
+      </div>
+      <nav class="flex-1 py-3 space-y-0.5 px-2">
+        <router-link
+          v-for="item in navItems"
+          :key="item.path"
+          :to="item.path"
+          class="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors"
+          :class="$route.path === item.path
+            ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
+            : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'"
+        >
+          <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5">
+            <path stroke-linecap="round" stroke-linejoin="round" :d="item.icon" />
+          </svg>
+          {{ item.label }}
+        </router-link>
+      </nav>
+      <div class="px-4 py-3 border-t border-gray-200 dark:border-gray-800 text-xs text-gray-400">
+        v3.11
+      </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="flex-1 flex flex-col overflow-hidden">
+      <header class="h-14 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 flex items-center px-6 shrink-0">
+        <div class="flex items-center gap-3">
+          <h2 class="text-base font-semibold">{{ $route.meta.title }}</h2>
+          <span class="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 font-medium">
+            实例 {{ slotStore.currentSlot }}
+          </span>
+        </div>
+        <div class="ml-auto flex items-center gap-3">
+          <button
+            type="button"
+            :disabled="!slotStore.canAddInstance"
+            :title="slotStore.canAddInstance ? '新建实例' : '已达到最大实例数（10个）'"
+            class="text-xs px-2 py-1 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity"
+            @click="handleAddInstance"
+          >
+            + 新建实例
+          </button>
+          <div class="flex items-center gap-2">
+            <InstanceSwitcher @change="handleSlotChange" />
+            <svg v-if="slotStore.switching" class="animate-spin h-4 w-4 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+          </div>
+          <span
+            class="text-xs px-2 py-0.5 rounded-full"
+            :class="taskStore.isAnyRunning
+              ? 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300'
+              : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'"
+          >
+            {{ taskStore.isAnyRunning ? '任务运行中' : '空闲' }}
+          </span>
+          <span v-if="taskStore.isAnyRunning && taskStore.displayStatus" class="text-xs text-gray-500">{{ taskStore.displayStatus }}</span>
+        </div>
+      </header>
+      <div class="flex-1 overflow-y-auto p-6">
+        <Transition name="page" mode="out-in">
+          <router-view :key="slotStore.currentSlot" />
+        </Transition>
+      </div>
+    </main>
+    <AlertModal />
+    <InstanceSwitchConfirm />
+    <ToastNotification />
+  </div>
+</template>

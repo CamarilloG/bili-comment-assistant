@@ -1,0 +1,256 @@
+import tkinter as tk
+from tkinter import messagebox
+import ttkbootstrap as ttk
+from ttkbootstrap.constants import *
+import threading
+import yaml
+import os
+from loguru import logger
+
+
+class AITab(ttk.Frame):
+    def __init__(self, master, config_file, **kwargs):
+        super().__init__(master, **kwargs)
+        self.config_file = config_file
+
+        self.ai_enabled_var = tk.BooleanVar(value=False)
+        self.model_id_var = tk.StringVar(value="deepseek_chat")
+        self.timeout_var = tk.IntVar(value=30)
+        self.max_retries_var = tk.IntVar(value=2)
+        self._model_list = []  # [(id, model_name), ...]
+
+        self.comment_enabled_var = tk.BooleanVar(value=True)
+        self.style_var = tk.StringVar(value="casual")
+        self.max_length_var = tk.IntVar(value=100)
+
+        self.filter_enabled_var = tk.BooleanVar(value=True)
+        self.use_comments_var = tk.BooleanVar(value=False)
+        self.use_related_var = tk.BooleanVar(value=False)
+        self.sensitivity_var = tk.IntVar(value=50)
+
+        self.setup_ui()
+        self.load_config()
+
+    def setup_ui(self):
+        container = ttk.Frame(self)
+        container.pack(fill=BOTH, expand=YES, padx=16, pady=12)
+
+        api_group = ttk.Labelframe(container, text="API 连接", padding=12)
+        api_group.pack(fill=X, pady=8)
+        api_group.columnconfigure(1, weight=1)
+
+        ttk.Checkbutton(api_group, text="启用 AI 功能", variable=self.ai_enabled_var, bootstyle="round-toggle").grid(row=0, column=0, columnspan=2, sticky=W, pady=4)
+
+        ttk.Label(api_group, text="模型:").grid(row=1, column=0, sticky=W, pady=3)
+        self.model_combo = ttk.Combobox(api_group, state="readonly", width=32)
+        self.model_combo.grid(row=1, column=1, sticky=EW, padx=5, pady=3)
+        self.model_combo.bind("<<ComboboxSelected>>", self._on_model_selected)
+
+        param_frame = ttk.Frame(api_group)
+        param_frame.grid(row=2, column=0, columnspan=2, sticky=EW, pady=4)
+        ttk.Label(param_frame, text="超时(s):").pack(side=LEFT)
+        ttk.Entry(param_frame, textvariable=self.timeout_var, width=6).pack(side=LEFT, padx=(2, 12))
+        ttk.Label(param_frame, text="重试次数:").pack(side=LEFT)
+        ttk.Entry(param_frame, textvariable=self.max_retries_var, width=4).pack(side=LEFT, padx=2)
+
+        test_frame = ttk.Frame(api_group)
+        test_frame.grid(row=3, column=0, columnspan=2, sticky=W, pady=6)
+        ttk.Button(test_frame, text="测试连接", command=self._test_connection, bootstyle="info-outline", width=10).pack(side=LEFT)
+        self.test_status = ttk.Label(test_frame, text="", bootstyle="secondary")
+        self.test_status.pack(side=LEFT, padx=10)
+
+        comment_group = ttk.Labelframe(container, text="智能评论", padding=12)
+        comment_group.pack(fill=X, pady=8)
+        comment_group.columnconfigure(1, weight=1)
+
+        ttk.Checkbutton(comment_group, text="启用智能评论", variable=self.comment_enabled_var, bootstyle="round-toggle").grid(row=0, column=0, columnspan=2, sticky=W, pady=4)
+
+        ttk.Label(comment_group, text="推广意图/人设:").grid(row=1, column=0, sticky=NW, pady=3)
+        self.intent_text = tk.Text(comment_group, height=3, width=40)
+        self.intent_text.grid(row=1, column=1, sticky=EW, padx=5, pady=3)
+
+        style_frame = ttk.Frame(comment_group)
+        style_frame.grid(row=2, column=0, columnspan=2, sticky=EW, pady=4)
+        ttk.Label(style_frame, text="评论风格:").pack(side=LEFT)
+        self.style_map = {"随意": "casual", "热情": "enthusiastic", "专业": "professional"}
+        self.style_map_rev = {v: k for k, v in self.style_map.items()}
+        self.style_cb = ttk.Combobox(style_frame, values=list(self.style_map.keys()), state="readonly", width=10)
+        self.style_cb.pack(side=LEFT, padx=(2, 16))
+        self.style_cb.current(0)
+        ttk.Label(style_frame, text="最大字数:").pack(side=LEFT)
+        ttk.Entry(style_frame, textvariable=self.max_length_var, width=6).pack(side=LEFT, padx=2)
+
+        filter_group = ttk.Labelframe(container, text="智能筛选", padding=12)
+        filter_group.pack(fill=X, pady=8)
+        filter_group.columnconfigure(1, weight=1)
+
+        ttk.Checkbutton(filter_group, text="启用智能筛选", variable=self.filter_enabled_var, bootstyle="round-toggle").grid(row=0, column=0, columnspan=2, sticky=W, pady=4)
+        ttk.Checkbutton(filter_group, text="拉取评论区（供筛选/评论参考）", variable=self.use_comments_var, bootstyle="round-toggle").grid(row=1, column=0, columnspan=2, sticky=W, pady=2)
+        ttk.Checkbutton(filter_group, text="拉取推荐视频标题（供筛选/评论参考）", variable=self.use_related_var, bootstyle="round-toggle").grid(row=2, column=0, columnspan=2, sticky=W, pady=2)
+
+        ttk.Label(filter_group, text="筛选标准:").grid(row=3, column=0, sticky=NW, pady=3)
+        self.criteria_text = tk.Text(filter_group, height=3, width=40)
+        self.criteria_text.grid(row=3, column=1, sticky=EW, padx=5, pady=3)
+
+        sensitivity_frame = ttk.Frame(filter_group)
+        sensitivity_frame.grid(row=4, column=0, columnspan=2, sticky=EW, pady=6)
+        ttk.Label(sensitivity_frame, text="宽松(1)").pack(side=LEFT, padx=(0, 4))
+        self.sensitivity_scale = ttk.Scale(
+            sensitivity_frame, from_=1, to=100, variable=self.sensitivity_var,
+            command=self._on_sensitivity_change, bootstyle="info",
+        )
+        self.sensitivity_scale.pack(side=LEFT, fill=X, expand=YES)
+        ttk.Label(sensitivity_frame, text="严格(100)").pack(side=LEFT, padx=(4, 0))
+        self.sensitivity_label = ttk.Label(sensitivity_frame, text="50", width=4, anchor="center", bootstyle="info")
+        self.sensitivity_label.pack(side=LEFT, padx=(6, 0))
+
+        btn_frame = ttk.Frame(container)
+        btn_frame.pack(fill=X, pady=12)
+        ttk.Button(btn_frame, text="保存配置", command=self.save_config, bootstyle="success", width=14).pack(side=LEFT)
+
+    def _on_model_selected(self, event=None):
+        i = self.model_combo.current()
+        if 0 <= i < len(self._model_list):
+            self.model_id_var.set(self._model_list[i][0])
+
+    def _on_sensitivity_change(self, value):
+        int_val = int(float(value))
+        self.sensitivity_var.set(int_val)
+        self.sensitivity_label.config(text=str(int_val))
+
+    def _refresh_model_combo(self):
+        try:
+            from core.models_registry import list_models
+            models = list_models(include_secrets=False)
+            self._model_list = [(m["id"], m["model_name"]) for m in models]
+            display_vals = [m[1] for m in self._model_list]
+            self.model_combo["values"] = display_vals
+            if self._model_list:
+                cur_id = self.model_id_var.get()
+                for i, (mid, name) in enumerate(self._model_list):
+                    if mid == cur_id:
+                        self.model_combo.current(i)
+                        break
+                else:
+                    self.model_combo.current(0)
+                    self.model_id_var.set(self._model_list[0][0])
+        except Exception as e:
+            logger.warning(f"Load model list: {e}")
+            self._model_list = [("deepseek_chat", "DeepSeek Chat")]
+            self.model_combo["values"] = ["DeepSeek Chat"]
+            self.model_combo.current(0)
+            self.model_id_var.set("deepseek_chat")
+        self._sync_combo_to_id()
+
+    def _sync_combo_to_id(self):
+        """根据 model_id_var 设置下拉框显示的名称。"""
+        cur_id = self.model_id_var.get()
+        for i, (mid, name) in enumerate(self._model_list):
+            if mid == cur_id:
+                self.model_combo.current(i)
+                return
+        if self._model_list:
+            self.model_combo.current(0)
+            self.model_id_var.set(self._model_list[0][0])
+
+    def load_config(self):
+        if not os.path.exists(self.config_file):
+            self._refresh_model_combo()
+            return
+        try:
+            with open(self.config_file, 'r', encoding='utf-8') as f:
+                conf = yaml.safe_load(f) or {}
+            ai = conf.get('ai', {})
+            self.ai_enabled_var.set(ai.get('enabled', False))
+            model_id = ai.get('model_id') or (ai.get('model', '').replace('-', '_') if ai.get('model') else '') or 'deepseek_chat'
+            self.model_id_var.set(model_id)
+            self.timeout_var.set(ai.get('timeout', 30))
+            self.max_retries_var.set(ai.get('max_retries', 2))
+            self._refresh_model_combo()
+
+            comment = ai.get('comment', {})
+            self.comment_enabled_var.set(comment.get('enabled', True))
+            intent = comment.get('user_intent', '')
+            if intent:
+                self.intent_text.insert("1.0", intent)
+            style_val = comment.get('style', 'casual')
+            if style_val in self.style_map_rev:
+                self.style_cb.set(self.style_map_rev[style_val])
+            self.max_length_var.set(comment.get('max_length', 100))
+
+            filt = ai.get('filter', {})
+            self.filter_enabled_var.set(filt.get('enabled', True))
+            self.use_comments_var.set(filt.get('use_comments', False))
+            self.use_related_var.set(filt.get('use_related', False))
+            criteria = filt.get('criteria', '')
+            if criteria:
+                self.criteria_text.insert("1.0", criteria)
+            sens = max(1, min(100, int(filt.get('sensitivity', 50))))
+            self.sensitivity_var.set(sens)
+            self.sensitivity_label.config(text=str(sens))
+        except Exception as e:
+            logger.error(f"AI Config Load Error: {e}")
+
+    def save_config(self):
+        try:
+            if os.path.exists(self.config_file):
+                with open(self.config_file, 'r', encoding='utf-8') as f:
+                    conf = yaml.safe_load(f) or {}
+            else:
+                conf = {}
+
+            model_id = self.model_id_var.get().strip()
+            if not model_id and self._model_list:
+                model_id = self._model_list[0][0]
+            conf['ai'] = {
+                'enabled': self.ai_enabled_var.get(),
+                'model_id': model_id,
+                'timeout': self.timeout_var.get(),
+                'max_retries': self.max_retries_var.get(),
+                'comment': {
+                    'enabled': self.comment_enabled_var.get(),
+                    'user_intent': self.intent_text.get("1.0", tk.END).strip(),
+                    'style': self.style_map.get(self.style_cb.get(), 'casual'),
+                    'max_length': self.max_length_var.get(),
+                },
+                'filter': {
+                    'enabled': self.filter_enabled_var.get(),
+                    'criteria': self.criteria_text.get("1.0", tk.END).strip(),
+                    'sensitivity': self.sensitivity_var.get(),
+                    'use_comments': self.use_comments_var.get(),
+                    'use_related': self.use_related_var.get(),
+                },
+            }
+
+            with open(self.config_file, 'w', encoding='utf-8') as f:
+                yaml.dump(conf, f, allow_unicode=True, sort_keys=False)
+            logger.info("AI 配置已保存")
+            return True
+        except Exception as e:
+            messagebox.showerror("错误", f"保存失败: {e}")
+            return False
+
+    def _test_connection(self):
+        self.test_status.config(text="测试中...", bootstyle="secondary")
+        threading.Thread(target=self._test_thread, daemon=True).start()
+
+    def _test_thread(self):
+        try:
+            from core.models_registry import get_model_by_id
+            from core.ai_provider import AIProvider
+            model_id = self.model_id_var.get().strip()
+            model_cfg = get_model_by_id(model_id) if model_id else None
+            if not model_cfg:
+                self.after(0, lambda: self.test_status.config(text="❌ 模型不存在", bootstyle="danger"))
+                return
+            if not (model_cfg.get("api_key") or "").strip():
+                self.after(0, lambda: self.test_status.config(text="❌ 未配置 API Key", bootstyle="danger"))
+                return
+            provider = AIProvider(model_cfg, timeout=10, max_retries=1)
+            out = provider.chat("You are a helper.", "hi", max_tokens=32)
+            if out:
+                self.after(0, lambda: self.test_status.config(text="✅ 连接成功", bootstyle="success"))
+            else:
+                self.after(0, lambda: self.test_status.config(text="⚠️ 无响应", bootstyle="warning"))
+        except Exception as e:
+            self.after(0, lambda: self.test_status.config(text=f"❌ {e}", bootstyle="danger"))

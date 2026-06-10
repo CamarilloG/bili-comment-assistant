@@ -1,0 +1,140 @@
+import json
+import os
+import time
+from playwright.sync_api import BrowserContext, Page
+from utils.logger import get_logger
+from core.selectors import BilibiliSelectors
+
+logger = get_logger()
+
+class AuthManager:
+    def __init__(self, context: BrowserContext, cookie_file: str = "cookies.json", qrcode_path: str | None = None):
+        self.context = context
+        self.cookie_file = cookie_file
+        self.qrcode_path = qrcode_path or "login_qrcode.png"
+
+    def login(self):
+        """
+        Perform login flow.
+        1. Try to load cookies.
+        2. Check if logged in.
+        3. If not, perform QR login.
+        """
+        if os.path.exists(self.cookie_file):
+            logger.info(f"正在从 {self.cookie_file} 加载 Cookies")
+            try:
+                with open(self.cookie_file, 'r', encoding='utf-8') as f:
+                    cookies = json.load(f)
+                    self.context.add_cookies(cookies)
+                
+                if self._check_login_status():
+                    logger.info("使用 Cookies 登录成功。")
+                    return True
+                else:
+                    logger.warning("Cookies 已过期或无效。")
+            except Exception as e:
+                logger.error(f"加载 Cookies 出错: {e}")
+        
+        return self._qr_login()
+
+    def _check_login_status(self) -> bool:
+        """
+        Check if current session is logged in by visiting homepage and checking for login button vs avatar.
+        """
+        page = self.context.new_page()
+        try:
+            logger.debug("正在检查登录状态...")
+            page.goto("https://www.bilibili.com/", wait_until="domcontentloaded")
+            
+            # Wait for header: 使用 selectors 中较全的选择器，与 B 站当前 DOM 保持一致，减少误报超时
+            header_selector = BilibiliSelectors.LOGIN["avatar"] + "," + BilibiliSelectors.LOGIN["login_btn"]
+            try:
+                page.wait_for_selector(header_selector, timeout=10000)
+            except Exception:
+                logger.debug("等待头部元素超时，继续用后续逻辑判断登录态。")
+            
+            # Check for "登录" text in header-login-entry
+            login_entry = page.locator(BilibiliSelectors.LOGIN["login_btn"])
+            if login_entry.count() > 0:
+                if "登录" in login_entry.inner_text():
+                    logger.debug("找到'登录'按钮。用户未登录。")
+                    return False
+            
+            # Check for avatar（与 selectors 一致）
+            if page.locator(BilibiliSelectors.LOGIN["avatar"]).count() > 0:
+                logger.debug("找到头像。用户已登录。")
+                return True
+            
+            # Fallback: Check if we can access personal center
+            # If we are not logged in, this usually redirects to login page
+            try:
+                page.goto("https://account.bilibili.com/account/home", wait_until="domcontentloaded")
+                if "passport.bilibili.com/login" in page.url:
+                    logger.debug("个人中心跳转至登录页。用户未登录。")
+                    return False
+                else:
+                    logger.debug("个人中心访问正常。用户已登录。")
+                    return True
+            except Exception as e:
+                logger.debug(f"访问个人中心失败: {e}")
+                return False
+
+        except Exception as e:
+            logger.error(f"检查登录状态出错: {e}")
+            return False
+        finally:
+            page.close()
+
+    def _qr_login(self):
+        """
+        Perform QR code login.
+        """
+        logger.info("开始扫码登录...")
+        page = self.context.new_page()
+        try:
+            page.goto("https://passport.bilibili.com/login", wait_until="domcontentloaded")
+            logger.info("请在打开的浏览器窗口中扫描二维码登录。")
+            try:
+                page.screenshot(path=self.qrcode_path)
+                logger.info(f"已保存登录截图到 {self.qrcode_path}")
+            except Exception as e:
+                logger.error(f"截图失败: {e}")
+            
+            # Loop to check login status
+            start_time = time.time()
+            while time.time() - start_time < 120: # 2 minutes timeout
+                # Active polling for login status
+                # 1. Check if we are still on login page (URL check)
+                # 2. Check for success cookies or elements in the page
+                
+                # Check cookies first (fastest)
+                cookies = self.context.cookies()
+                # Bilibili login usually sets SESSDATA
+                sessdata = next((c for c in cookies if c['name'] == 'SESSDATA'), None)
+                if sessdata:
+                    logger.info("找到 SESSDATA Cookie。登录可能已成功。")
+                    break
+                    
+                # Check if URL changed significantly
+                if "passport.bilibili.com/login" not in page.url:
+                    logger.info("URL 已更改，假设登录成功。")
+                    break
+                
+                time.sleep(2)
+            
+            # After loop, verify strictly
+            if self._check_login_status():
+                logger.info("扫码登录成功。")
+                self._save_cookies()
+                return True
+            else:
+                logger.error("登录失败或超时。")
+                return False
+        finally:
+            page.close()
+
+    def _save_cookies(self):
+        cookies = self.context.cookies()
+        with open(self.cookie_file, 'w', encoding='utf-8') as f:
+            json.dump(cookies, f, indent=2)
+        logger.info(f"Cookies 已保存至 {self.cookie_file}")

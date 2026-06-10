@@ -1,0 +1,137 @@
+account:
+  cookie_file: cookies.json
+  skip_history: true
+search:
+  keywords:
+  - 穿越火线
+  max_videos_per_keyword: 20
+  filter:
+    sort: click
+    duration: 0
+    time_range:
+      type: recent
+      value: 7
+  strategy:
+    selection: random
+    strict_title_match: false
+    random_pool_size: 20
+comment:
+  enable_image: true
+  texts:
+  - cf玩家一起玩
+  images:
+  - C:/Users/qsqsq/Downloads/7ab9f394b02cd608c348a77e48e24798.jpg
+behavior:
+  min_delay: 5.0
+  max_delay: 10.0
+  headless: false
+  timeout: 30000
+browser:
+  path: C:/Program Files/Google/Chrome/Application/chrome.exe
+  port: 0
+captcha:
+  max_count: 3           # 每日最大验证码次数
+  quiet_minutes: 5       # 验证码后静默等待时间（分钟）
+  warmup_minutes: 30     # 验证码后养号基础时长（分钟）
+  cd_warmup_hours: 3     # CD限制后养号时长（小时），养号结束后自动停止任务
+ai:
+  enabled: true
+  model_id: deepseek_chat
+  timeout: 30
+  max_retries: 3
+  # 调用间隔（秒）：两次 AI 请求之间的最小间隔，用于避免频率限制
+  # 高级模型（如 gemini/gpt）建议设置为 2-5 秒，普通模型可设置为 0
+  request_interval: 2
+  # 重试延迟基数（秒）：重试时的延迟时间 = retry_delay_base * 重试次数
+  # 例如：retry_delay_base=2，第1次重试延迟2秒，第2次延迟4秒
+  retry_delay_base: 2.0
+  comment:
+    enabled: true
+    # 评论区热门评论获取量（条）
+    max_comments: 10
+    # 相关视频标题获取量（条）
+    max_related: 5
+    user_intent: '你是一个 CF 老玩家，建了一个CF开黑聊天群，想要让更多玩家加群一起玩游戏；
+
+      不要用emoji表情。'
+    style: enthusiastic
+    max_length: 100
+    min_length: 10
+  filter:
+    enabled: true
+    criteria: 只选择穿越火线，CF强相关视频内容，跳过明显无关或者关联性较差的，包括其他游戏或者完全游戏无关的内容。
+    sensitivity: 50
+    use_comments: false
+    use_related: false
+    max_comments: 10
+    max_related: 5
+bots:
+  wecom:
+    enabled: false
+    webhook_url: ""
+    receive_enabled: false
+    callback_token: ""
+    callback_aes_key: ""
+  qqbot:
+    enabled: false
+    api_url: "http://localhost:5700"
+    access_token: ""
+    target_group: ""
+  baidu:
+    enabled: false
+    api_url: "http://apiin.im.baidu.com/api/msg/groupmsgsend"
+    access_token: ""
+    group_id: ""
+    # 消息通知类型配置
+    notifications:
+      captcha_alert: true          # 验证码提醒
+      captcha_cooldown: true       # 验证码冷却通知
+      captcha_terminated: true     # 验证码达上限通知
+      cd_limit: true               # CD 限制通知
+      comment_success: false       # 评论成功通知（建议关闭，太频繁）
+      comment_failed: true         # 评论失败通知
+      task_started: true           # 任务开始通知
+      task_completed: true         # 任务完成通知
+      task_error: true             # 任务错误通知
+dm_flow:
+  search:
+    keywords: []
+    max_videos_per_keyword: 5
+    order: pubdate
+  comment_scrape:
+    max_comments_per_video: 200
+  filter:
+    regex_patterns: []
+    use_ai: false
+    ai_prompt: ""
+  dm:
+    template: ""
+    max_per_run: 30
+    delay_range: [8, 20]
+    skip_already_sent: true
+
+warmup:
+  basic:
+    duration_minutes: 30
+    max_videos: 50
+  behavior:
+    watch_time_min: 20
+    watch_time_max: 240
+    random_pause: true
+    pause_prob: 0.005
+    random_scroll: true
+    scroll_prob: 0.01
+    view_comment: true
+    view_comment_prob: 0.005
+    random_like: true
+    like_prob: 0.3
+  comment:
+    enable: false
+    probability: 0.1
+    type: template
+  source: recommend
+  # 大间隔自动养号配置
+  auto_warmup_on_large_interval:
+    enabled: true                # 是否开启大间隔自动养号
+    threshold_seconds: 180       # 触发养号的最小间隔（秒），默认 3 分钟
+    # duration_minutes: auto     # 养号时长（分钟），默认 auto 表示使用实际间隔时长
